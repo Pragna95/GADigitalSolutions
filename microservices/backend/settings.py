@@ -161,3 +161,9 @@ VALID_API_KEYS = os.getenv(
 
 # Frontend configuration
 FRONTEND_URL = os.getenv('FrontendURL', 'http://localhost:3000')
+
+# LiveKit Configuration
+LIVEKIT_URL = os.getenv('LIVEKIT_URL', 'http://localhost:7880')
+LIVEKIT_API_KEY = os.getenv('LIVEKIT_API_KEY', 'devkey')
+LIVEKIT_API_SECRET = os.getenv('LIVEKIT_API_SECRET', 'secret')
+

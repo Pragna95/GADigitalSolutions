@@ -12,3 +12,5 @@ python-dotenv
 gunicorn
 drf-yasg
 celery
+pyjwt
+

@@ -1,6 +1,7 @@
 import random
 import string
 
+from django.utils import timezone
 from django.contrib.auth.hashers import check_password
 from django.core.signing import Signer
 from django.core.mail import send_mail
@@ -17,7 +18,15 @@ from .models import (
     Product,
     User,
     Meeting,
-    MeetingParticipant
+    MeetingParticipant,
+    MeetingSession,
+    ParticipantSession
+)
+from .livekit_utils import (
+    generate_join_token,
+    update_participant_permissions,
+    mute_participant_track,
+    kick_participant_from_room
 )
 
 
@@ -293,3 +302,186 @@ class UpdateParticipantStateView(APIView):
         return Response({
             "message": "updated"
         })
+
+
+class LiveKitTokenView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        meeting_id = request.data.get("meeting_id")
+        user_id = request.data.get("user_id")
+        name = request.data.get("name", "Unknown User")
+        role = request.data.get("role", "listener")
+
+        if not meeting_id or not user_id:
+            return Response({"error": "meeting_id and user_id are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            meeting = Meeting.objects.get(id=meeting_id)
+        except Meeting.DoesNotExist:
+            return Response({"error": "Meeting not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Ensure the user exists in our DB under this meeting's product
+        user, created = User.objects.get_or_create(
+            product=meeting.product,
+            external_user_id=user_id,
+            defaults={"name": name, "email": f"{user_id}@huddle.local", "role": "participant"}
+        )
+
+        # Check if the user is the host of this meeting. If so, overwrite role to "host"
+        if meeting.created_by_user == user:
+            role = "host"
+
+        # Generate join token
+        token = generate_join_token(
+            room_name=meeting.meeting_code,
+            identity=str(user.id),
+            name=name,
+            role=role
+        )
+
+        # We also map settings.LIVEKIT_URL
+        lk_url = settings.LIVEKIT_URL
+        # Frontend usually expects ws:// or wss:// for client connection
+        if lk_url.startswith("http"):
+            lk_url = lk_url.replace("http", "ws", 1)
+
+        return Response({
+            "token": token,
+            "url": lk_url,
+            "room": meeting.meeting_code,
+            "identity": str(user.id),
+            "role": role,
+            "name": user.name
+        }, status=status.HTTP_200_OK)
+
+
+class LiveKitModerationView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        meeting_id = request.data.get("meeting_id")
+        action = request.data.get("action")
+        target_identity = request.data.get("target_identity")
+        track_sid = request.data.get("track_sid")
+
+        if not all([meeting_id, action, target_identity]):
+            return Response({"error": "meeting_id, action, and target_identity are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            meeting = Meeting.objects.get(id=meeting_id)
+        except Meeting.DoesNotExist:
+            return Response({"error": "Meeting not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        room_name = meeting.meeting_code
+
+        success = False
+        error_msg = ""
+
+        if action == "mute":
+            if not track_sid:
+                return Response({"error": "track_sid is required for mute action"}, status=status.HTTP_400_BAD_REQUEST)
+            success, res = mute_participant_track(room_name, target_identity, track_sid, muted=True)
+            if not success:
+                error_msg = res
+        elif action == "kick":
+            success, res = kick_participant_from_room(room_name, target_identity)
+            if not success:
+                error_msg = res
+        elif action == "promote":
+            success, res = update_participant_permissions(room_name, target_identity, can_publish=True)
+            if not success:
+                error_msg = res
+        elif action == "demote":
+            success, res = update_participant_permissions(room_name, target_identity, can_publish=False)
+            if not success:
+                error_msg = res
+        else:
+            return Response({"error": f"Invalid action: {action}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if success:
+            return Response({"message": f"Action {action} performed successfully"}, status=status.HTTP_200_OK)
+        else:
+            return Response({"error": f"Failed to perform action: {error_msg}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class LiveKitWebhookView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        event_type = request.data.get("event")
+        if not event_type:
+            return Response({"error": "No event type"}, status=status.HTTP_400_BAD_REQUEST)
+
+        print(f"[LiveKit Webhook] Received event: {event_type}")
+
+        room_data = request.data.get("room", {})
+        room_name = room_data.get("name")
+
+        participant_data = request.data.get("participant", {})
+        participant_identity = participant_data.get("identity")
+
+        if not room_name:
+            return Response({"message": "No room name in payload"}, status=status.HTTP_200_OK)
+
+        try:
+            meeting = Meeting.objects.get(meeting_code=room_name)
+        except Meeting.DoesNotExist:
+            return Response({"message": "Meeting not found for this room"}, status=status.HTTP_200_OK)
+
+        if event_type == "room_started":
+            session, created = MeetingSession.objects.get_or_create(
+                meeting=meeting,
+                status="active",
+                defaults={
+                    "session_number": meeting.sessions.count() + 1,
+                    "started_at": timezone.now()
+                }
+            )
+        elif event_type == "room_finished":
+            active_sessions = MeetingSession.objects.filter(meeting=meeting, status="active")
+            for session in active_sessions:
+                session.status = "ended"
+                session.ended_at = timezone.now()
+                if session.started_at:
+                    session.total_duration_seconds = int((session.ended_at - session.started_at).total_seconds())
+                session.save()
+        elif event_type == "participant_joined":
+            if participant_identity:
+                try:
+                    user = User.objects.get(id=participant_identity)
+                    session, _ = MeetingSession.objects.get_or_create(
+                        meeting=meeting,
+                        status="active",
+                        defaults={
+                            "session_number": meeting.sessions.count() + 1,
+                            "started_at": timezone.now()
+                        }
+                    )
+                    ParticipantSession.objects.create(
+                        meeting_session=session,
+                        user=user,
+                        joined_at=timezone.now()
+                    )
+                except (User.DoesNotExist, ValueError):
+                    pass
+        elif event_type == "participant_left":
+            if participant_identity:
+                try:
+                    user = User.objects.get(id=participant_identity)
+                    p_sessions = ParticipantSession.objects.filter(
+                        meeting_session__meeting=meeting,
+                        meeting_session__status="active",
+                        user=user,
+                        left_at__isnull=True
+                    )
+                    now = timezone.now()
+                    for p_sess in p_sessions:
+                         p_sess.left_at = now
+                         p_sess.duration_seconds = int((now - p_sess.joined_at).total_seconds())
+                         p_sess.save()
+                except (User.DoesNotExist, ValueError):
+                    pass
+
+        return Response({"status": "success"}, status=status.HTTP_200_OK)
+
