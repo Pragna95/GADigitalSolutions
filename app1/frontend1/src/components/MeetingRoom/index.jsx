@@ -467,6 +467,9 @@ const MeetingRoom = () => {
                     showHandRaise={showHandRaise}
                     showParticipants={showParticipants}
                     showMenuPage={showMenuPage}
+                    setShowParticipants={setShowParticipants}
+                    setShowHandRaise={setShowHandRaise}
+                    setShowMenuPage={setShowMenuPage}
                     participantMembers={participantMembers}
                     participantName={participantName}
                     localVideoRef={localVideoRef}
