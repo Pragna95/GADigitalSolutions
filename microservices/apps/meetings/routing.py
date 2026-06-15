@@ -1,9 +1,7 @@
 from django.urls import re_path
-from .consumers import MeetingConsumer
+from . import consumers
 
 websocket_urlpatterns = [
-    re_path(
-        r"ws/participants/(?P<meeting_id>[\w-]+)/$",
-        MeetingConsumer.as_asgi()
-    ),
+    # The ^ ensures it starts matching at 'ws/', and [^/]+ ensures it captures the whole UUID perfectly
+    re_path(r'^ws/audio/(?P<meeting_id>[^/]+)/?$', consumers.MeetingConsumer.as_asgi()),
 ]

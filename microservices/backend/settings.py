@@ -161,3 +161,10 @@ VALID_API_KEYS = os.getenv(
 
 # Frontend configuration
 FRONTEND_URL = os.getenv('FrontendURL', 'http://localhost:3000')
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": "redis://127.0.0.1:6379/1",
+    }
+}

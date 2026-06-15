@@ -1,30 +1,25 @@
-"""
-ASGI config for backend project.
-
-It exposes the ASGI callable as a module-level variable named ``application``.
-
-For more information on this file, see
-https://docs.djangoproject.com/en/6.0/howto/deployment/asgi/
-"""
-
 import os
-print("ASGI FILE LOADED")
+import sys
+import asyncio
+
+# Using SelectorEventLoop on Windows under Python 3.12+ is deprecated and causes TimeoutError reading from Redis.
+# We let Python default to WindowsProactorEventLoopPolicy instead.
+# if sys.platform == 'win32':
+#     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from django.core.asgi import get_asgi_application
-from channels.routing import ProtocolTypeRouter
-from channels.routing import URLRouter
+from channels.routing import ProtocolTypeRouter, URLRouter
+from channels.auth import AuthMiddlewareStack
 
-from apps.meetings.routing import websocket_urlpatterns
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')
 
-os.environ.setdefault(
-    "DJANGO_SETTINGS_MODULE",
-    "backend.settings"
-)
-
-django_asgi_app = get_asgi_application()
+import apps.meetings.routing
 
 application = ProtocolTypeRouter({
-    "http": django_asgi_app,
-    "websocket": URLRouter(
-        websocket_urlpatterns
+    "http": get_asgi_application(),
+    "websocket": AuthMiddlewareStack(
+        URLRouter(
+            apps.meetings.routing.websocket_urlpatterns
+        )
     ),
 })
