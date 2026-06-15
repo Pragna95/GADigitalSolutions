@@ -9,7 +9,7 @@ import { Toaster } from "react-hot-toast";
 
 // Pages
 
-import Meeting from "./pages/Meeting";
+import Meeting from "./components/MeetingRoom";
 import MeetingLobby from "./pages/MeetingLobby";
 import LoginAuth from "./pages/LoginAuth";
 import SignupAuth from "./pages/SignupAuth";
@@ -136,7 +136,7 @@ function App() {
           <Route path="/thank-you" element={<ThankYou />} />
 
           {/* Protected Routes */}
-         
+
 
           <Route
             path="/dashboard"
