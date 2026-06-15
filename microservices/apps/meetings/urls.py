@@ -18,4 +18,8 @@ urlpatterns = [
     path("api/meetings/participant/<str:meeting_id>/<str:user_id>/",
     ParticipantStateView.as_view()),
     path("api/meetings/participant/update/",UpdateParticipantStateView.as_view()),
+    path('api/meetings/token/', LiveKitTokenView.as_view(), name='api_livekit_token'),
+    path('api/meetings/moderate/', LiveKitModerationView.as_view(), name='api_livekit_moderate'),
+    path('api/meetings/webhook/', LiveKitWebhookView.as_view(), name='api_livekit_webhook'),
 ]
+
