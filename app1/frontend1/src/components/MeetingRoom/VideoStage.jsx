@@ -80,11 +80,7 @@ const VideoStage = ({
             ) : (
                 <>
                     {/* IMAGE */}
-                    <img
-                        src="https://images.unsplash.com/photo-1546961329-78bef0414d7c?q=80&w=1600"
-                        alt="meeting"
-                        className="absolute inset-0 w-full h-full object-cover object-center"
-                    />
+                    
 
                     <div className="absolute inset-0 bg-black/5"></div>
 
