@@ -1,35 +1,36 @@
 from django.urls import path
 from django.contrib.auth import views as auth_views
 from . import views
+from . import MeetingViews as meeting_views  # Changed alias to avoid conflict
 
 urlpatterns = [
-    # --- Authentication ---
+    # --- Authentication (from views.py) ---
     path('login/', views.CustomLoginView.as_view(), name='login'),
     path('logout/', auth_views.LogoutView.as_view(next_page='/login/'), name='logout'),
     path('signup/', views.SignupView.as_view(), name='signup'),
     
-    # --- Admin Dashboard ---
+    # --- Admin Dashboard (from views.py) ---
     path('super-admin/dashboard/', views.SuperAdminDashboardView.as_view(), name='super_admin_dashboard'),
     
-    # --- Meeting Management API ---
-    path('api/meeting/schedule/', views.ScheduleMeetingView.as_view(), name='api_schedule_meeting'),
-    path('api/meetings/', views.ListMeetingsView.as_view(), name='api_list_meetings'),
-    path('api/meeting/validate/<str:company>/<str:api_key>/<uuid:meeting_id>/', views.ValidateMeetingView.as_view(), name='api_validate_meeting'),
-    path('api/meeting/validate-lobby/<uuid:meeting_id>/', views.ValidateMeetingView.as_view(), name='api_validate_lobby'),
+    # --- Meeting Management API (from MeetingViews.py) ---
+    path('api/meeting/schedule/', meeting_views.ScheduleMeetingView.as_view(), name='api_schedule_meeting'),
+    path('api/meetings/', meeting_views.ListMeetingsView.as_view(), name='api_list_meetings'),
+    path('api/meeting/validate/<str:company>/<str:api_key>/<uuid:meeting_id>/', meeting_views.ValidateMeetingView.as_view(), name='api_validate_meeting'),
+    path('api/meeting/validate-lobby/<uuid:meeting_id>/', meeting_views.ValidateMeetingView.as_view(), name='api_validate_lobby'),
     
-    # --- LiveKit Integration ---
-    path('api/meetings/token/', views.LiveKitTokenView.as_view(), name='api_livekit_token'),
-    path('api/meetings/moderate/', views.LiveKitModerationView.as_view(), name='api_livekit_moderate'),
-    path('api/meetings/webhook/', views.LiveKitWebhookView.as_view(), name='api_livekit_webhook'),
+    # --- LiveKit Integration (from MeetingViews.py) ---
+    path('api/meetings/token/', meeting_views.LiveKitTokenView.as_view(), name='api_livekit_token'),
+    path('api/meetings/moderate/', meeting_views.LiveKitModerationView.as_view(), name='api_livekit_moderate'),
+    path('api/meetings/webhook/', meeting_views.LiveKitWebhookView.as_view(), name='api_livekit_webhook'),
     
-    # --- Real-Time Messaging ---
-    path("api/chat/<uuid:meeting_id>/", views.ChatMessageView.as_view(), name='api_chat'),
+    # --- Real-Time Messaging (from MeetingViews.py) ---
+    path("api/chat/<uuid:meeting_id>/", meeting_views.ChatMessageView.as_view(), name='api_chat'),
 
-    # --- Participant State Class-Based Views ---
-    path("api/meetings/participant/<uuid:meeting_id>/<uuid:user_id>/", views.ParticipantStateView.as_view(), name='api_cbv_get_participant'),
-    path("api/meetings/participant/update/", views.UpdateParticipantStateView.as_view(), name='api_cbv_update_participant'),
+    # --- Participant State Class-Based Views (from MeetingViews.py) ---
+    path("api/meetings/participant/<uuid:meeting_id>/<uuid:user_id>/", meeting_views.ParticipantStateView.as_view(), name='api_cbv_get_participant'),
+    path("api/meetings/participant/update/", meeting_views.UpdateParticipantStateView.as_view(), name='api_cbv_update_participant'),
 
-    # --- Real-Time Meeting Controls Function-Based Views ---
+    # --- Real-Time Meeting Controls Function-Based Views (from views.py) ---
     path("api/meetings/toggle-mic/", views.toggle_mic, name='api_toggle_mic'),
     path("api/meetings/start-recording/", views.start_recording, name='api_start_recording'),
     path("api/meetings/stop-recording/", views.stop_recording, name='api_stop_recording'),

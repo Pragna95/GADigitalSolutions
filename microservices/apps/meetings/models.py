@@ -156,7 +156,7 @@ class ParticipantSession(models.Model):
 
 class Recording(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    meeting_session = models.ForeignKey(MeetingSession, on_delete=models.CASCADE, related_name='recordings')
+    meeting_session = models.ForeignKey(MeetingSession, on_delete=models.CASCADE, related_name='recordings', null=True, blank=True)
     meeting_link = models.URLField(blank=True, null=True)
     recording_type = models.CharField(max_length=50, default="VIDEO")
     storage_provider = models.CharField(max_length=50, default="LOCAL")

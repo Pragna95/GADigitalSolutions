@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
-import { createSocket } from "../../../../frontend/src/services/socket";
-import { createPeerConnection } from "../../../../frontend/src/services/webrtc";
-import { startScreenShare, stopScreenShare, getScreenSharer } from "../../../../frontend/src/api/meeting";
+import { createSocket } from "../../services/socket";
+import { createPeerConnection } from "../../services/webrtc";
+import { startScreenShare, stopScreenShare, getScreenSharer } from "../../api/meeting";
 import { Monitor, X, MicOff } from "lucide-react";
 
 // --- Sub-components for encapsulation ---

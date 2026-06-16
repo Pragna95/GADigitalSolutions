@@ -13,6 +13,5 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     
     # App API Routers
-    path('api/users/', include('apps.users.urls')),
     path('api/meetings/', include('apps.meetings.urls')),
 ]

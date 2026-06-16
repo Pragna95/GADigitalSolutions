@@ -1,5 +1,5 @@
-import React from "react";
-import { MicOff } from "lucide-react";
+import React, { useMemo } from "react";
+import { MicOff, VideoOff, User } from "lucide-react";
 
 const VideoStage = ({
     showParticipantsGrid,
@@ -14,12 +14,17 @@ const VideoStage = ({
     participantName,
     localVideoRef,
     isVideoOn,
-    remoteStreams,
-    roomPeers,
+    remoteStreams = [],
+    roomPeers = {},
 }) => {
+    // Determine the primary stream to focus on the center stage
+    const primaryRemoteStream = useMemo(() => {
+        return remoteStreams.length > 0 ? remoteStreams[0] : null;
+    }, [remoteStreams]);
+
     return (
         <div
-            className={`relative rounded-[28px] overflow-hidden bg-slate-900 border border-slate-850 shadow-[0_12px_40px_rgba(0,0,0,0.25)] h-full transition-all duration-300 ${
+            className={`relative rounded-[28px] overflow-hidden bg-slate-950 border border-slate-800 shadow-[0_12px_40px_rgba(0,0,0,0.4)] h-full transition-all duration-300 ${
                 showParticipantsGrid
                     ? "w-full"
                     : showHandRaise || showParticipants || showMenuPage
@@ -33,7 +38,7 @@ const VideoStage = ({
                     {/* TOP BAR */}
                     <div className="flex items-center justify-between mb-6">
                         <h2 className="text-white text-2xl font-bold tracking-tight">
-                            All Participants
+                            All Participants ({participantMembers.length})
                         </h2>
 
                         <button
@@ -45,7 +50,7 @@ const VideoStage = ({
                     </div>
 
                     {/* GRID */}
-                    <div className="grid grid-cols-4 gap-5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
                         {participantMembers.map((member, index) => (
                             <div
                                 key={index}
@@ -67,10 +72,7 @@ const VideoStage = ({
                                     </div>
 
                                     <div className="bg-black/50 backdrop-blur-xl p-2 rounded-full border border-white/5 shadow-md">
-                                        <MicOff
-                                            size={15}
-                                            className="text-white/80"
-                                        />
+                                        <MicOff size={15} className="text-white/80" />
                                     </div>
                                 </div>
                             </div>
@@ -79,14 +81,61 @@ const VideoStage = ({
                 </div>
             ) : (
                 <>
-                    {/* IMAGE */}
-                    
+                    {/* ================= MAIN CENTER STAGE AREA ================= */}
+                    <div className="absolute inset-0 w-full h-full bg-slate-900 flex items-center justify-center">
+                        {primaryRemoteStream ? (
+                            /* Render Active Remote Speaker on Center Stage */
+                            <div className="w-full h-full relative">
+                                <video
+                                    autoPlay
+                                    playsInline
+                                    ref={(el) => {
+                                        if (el && el.srcObject !== primaryRemoteStream.stream) {
+                                            el.srcObject = primaryRemoteStream.stream;
+                                        }
+                                    }}
+                                    className="w-full h-full object-cover"
+                                />
+                                <div className="absolute bottom-7 left-7 bg-black/60 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/10 z-20">
+                                    <p className="text-white text-xl font-bold tracking-tight">
+                                        {roomPeers[primaryRemoteStream.peerId]?.name || "Remote User"}
+                                    </p>
+                                </div>
+                            </div>
+                        ) : (
+                            /* Fallback: Render Local Video Stream in Center Stage if Solo */
+                            <div className="w-full h-full relative flex items-center justify-center bg-slate-900">
+                                {isVideoOn ? (
+                                    <video
+                                        ref={(el) => {
+                                            if (el && localVideoRef?.current && el.srcObject !== localVideoRef.current.srcObject) {
+                                                el.srcObject = localVideoRef.current.srcObject;
+                                            }
+                                        }}
+                                        autoPlay
+                                        muted
+                                        playsInline
+                                        className="w-full h-full object-cover"
+                                    />
+                                ) : (
+                                    <div className="flex flex-col items-center gap-4 text-slate-500 animate-fade-in">
+                                        <div className="w-24 h-24 rounded-full bg-slate-800 flex items-center justify-center border border-slate-700 shadow-inner">
+                                            <User size={44} className="text-slate-400" />
+                                        </div>
+                                        <p className="text-sm font-medium tracking-wide text-slate-400">
+                                            Camera is turned off
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
 
-                    <div className="absolute inset-0 bg-black/5"></div>
+                    <div className="absolute inset-0 bg-black/5 pointer-events-none"></div>
 
                     {/* ================= TOP RIGHT OVERLAYS ================= */}
                     <div className="absolute top-5 right-5 flex flex-col items-end gap-4 z-40">
-                        {/* PARTICIPANTS OVERLAY */}
+                        {/* PARTICIPANTS OVERLAY BUTTON */}
                         <button
                             onClick={() => {
                                 setShowParticipants(!showParticipants);
@@ -95,31 +144,25 @@ const VideoStage = ({
                             }}
                             className="relative w-[96px] h-[40px] hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer group"
                         >
-                            {/* Avatar 1 */}
                             <img
                                 src="https://randomuser.me/api/portraits/women/65.jpg"
                                 alt=""
                                 className="absolute left-0 top-0 w-10 h-10 rounded-[12px] border-2 border-white object-cover shadow-md group-hover:-translate-x-1 transition-transform duration-300"
                             />
-
-                            {/* Avatar 2 */}
                             <img
                                 src="https://randomuser.me/api/portraits/men/60.jpg"
                                 alt=""
                                 className="absolute left-7 top-0 w-10 h-10 rounded-[12px] border-2 border-white object-cover shadow-md transition-transform duration-300"
                             />
-
-                            {/* +3 */}
                             <div className="absolute left-[56px] top-0 w-10 h-10 rounded-[12px] border-2 border-white bg-[#ACBFFF] flex items-center justify-center shadow-md group-hover:translate-x-1 transition-transform duration-300">
                                 <span className="text-[12px] font-semibold text-[#394C84]">
-                                    +3
+                                    +{participantMembers.length > 2 ? participantMembers.length - 2 : 0}
                                 </span>
                             </div>
                         </button>
 
                         {/* HAND RAISE OVERLAY */}
                         <div className="flex items-end gap-3">
-                            {/* HAND RAISE COUNT */}
                             <button
                                 onClick={() => {
                                     setShowHandRaise(!showHandRaise);
@@ -133,23 +176,17 @@ const VideoStage = ({
                                 </span>
                             </button>
 
-                            {/* AVATAR STACK */}
                             <div className="relative w-[96px] h-[40px] hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer group">
-                                {/* Avatar 1 */}
                                 <img
                                     src="https://randomuser.me/api/portraits/women/33.jpg"
                                     alt=""
                                     className="absolute left-0 top-0 w-10 h-10 rounded-[12px] border-2 border-white object-cover shadow-md group-hover:-translate-x-1 transition-transform duration-300"
                                 />
-
-                                {/* Avatar 2 */}
                                 <img
                                     src="https://randomuser.me/api/portraits/men/33.jpg"
                                     alt=""
                                     className="absolute left-7 top-0 w-10 h-10 rounded-[12px] border-2 border-white object-cover shadow-md transition-transform duration-300"
                                 />
-
-                                {/* +3 */}
                                 <div className="absolute left-[56px] top-0 w-10 h-10 rounded-[12px] border-2 border-white bg-[#ACBFFF] flex items-center justify-center shadow-md group-hover:translate-x-1 transition-transform duration-300">
                                     <span className="text-[12px] font-semibold text-[#394C84]">
                                         +3
@@ -158,51 +195,66 @@ const VideoStage = ({
                             </div>
                         </div>
                     </div>
-                    {/* NAME */}
-                    <h1 className="absolute bottom-7 left-7 text-white text-[38px] font-extrabold tracking-tight drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)] z-20">
-                        {participantName}
-                    </h1>
 
-                    {/* SMALL VIDEO */}
-                    <div className="absolute bottom-5 right-5 z-20 space-y-3">
-                        <div className="relative w-[220px] h-[140px] rounded-[24px] overflow-hidden bg-black/90 border border-white/10 shadow-2xl">
-                            <video
-                                ref={localVideoRef}
-                                autoPlay
-                                muted
-                                playsInline
-                                className="w-full h-full object-cover"
-                            />
-                            {!isVideoOn && (
-                                <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center text-white">
-                                    <MicOff size={24} />
-                                    <span className="text-xs mt-2">Camera off</span>
+                    {/* ONLY SHOW SUB-LABEL IF NOT SHOWING REMOTE USER IN CENTER */}
+                    {!primaryRemoteStream && (
+                        <h1 className="absolute bottom-7 left-7 text-white text-[38px] font-extrabold tracking-tight drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)] z-20 pointer-events-none">
+                            {participantName} (You)
+                        </h1>
+                    )}
+
+                    {/* ================= FLOATING CORNER PICTURE-IN-PICTURE TILES ================= */}
+                    <div className="absolute bottom-5 right-5 z-20 space-y-3 max-h-[80%] overflow-y-auto p-1 pointer-events-auto">
+                        {/* Always show small self-view if a remote user is taking up the center stage */}
+                        {primaryRemoteStream && (
+                            <div className="relative w-[220px] h-[140px] rounded-[24px] overflow-hidden bg-black/90 border border-white/10 shadow-2xl transition-all">
+                                <video
+                                    ref={localVideoRef}
+                                    autoPlay
+                                    muted
+                                    playsInline
+                                    className="w-full h-full object-cover"
+                                />
+                                <div className="absolute left-3 bottom-3 bg-black/60 px-2 py-0.5 rounded-lg text-[11px] font-semibold text-white">
+                                    You
                                 </div>
-                            )}
-                        </div>
-
-                        {remoteStreams.length > 0 && (
-                            <div className="grid grid-cols-2 gap-2">
-                                {remoteStreams.slice(0, 2).map((remote) => (
-                                    <div
-                                        key={remote.peerId}
-                                        className="relative w-full h-[80px] rounded-[20px] overflow-hidden bg-black/90 border border-white/10"
-                                    >
-                                        <video
-                                            autoPlay
-                                            playsInline
-                                            ref={(el) => {
-                                                if (el && el.srcObject !== remote.stream) {
-                                                    el.srcObject = remote.stream;
-                                                }
-                                            }}
-                                            className="w-full h-full object-cover"
-                                        />
-                                        <div className="absolute left-2 bottom-2 bg-black/70 px-2 py-1 rounded-full text-[10px] text-white">
-                                            {roomPeers[remote.peerId]?.name || remote.peerId}
-                                        </div>
+                                {!isVideoOn && (
+                                    <div className="absolute inset-0 bg-slate-900 flex flex-col items-center justify-center text-slate-400">
+                                        <VideoOff size={20} />
+                                        <span className="text-[10px] mt-1">Camera off</span>
                                     </div>
-                                ))}
+                                )}
+                            </div>
+                        )}
+
+                        {/* Render all other peer streams on the right side stack */}
+                        {remoteStreams.length > 0 && (
+                            <div className="flex flex-col gap-2 w-[220px]">
+                                {remoteStreams.map((remote, idx) => {
+                                    // Skip the first one if it's already highlighted in the center view
+                                    if (idx === 0) return null;
+
+                                    return (
+                                        <div
+                                            key={remote.peerId}
+                                            className="relative w-full h-[120px] rounded-[20px] overflow-hidden bg-black/90 border border-white/10 shadow-lg"
+                                        >
+                                            <video
+                                                autoPlay
+                                                playsInline
+                                                ref={(el) => {
+                                                    if (el && el.srcObject !== remote.stream) {
+                                                        el.srcObject = remote.stream;
+                                                    }
+                                                }}
+                                                className="w-full h-full object-cover"
+                                            />
+                                            <div className="absolute left-3 bottom-3 bg-black/70 px-2 py-1 rounded-lg text-[10px] font-medium text-white border border-white/5">
+                                                {roomPeers[remote.peerId]?.name || "Remote User"}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         )}
                     </div>
