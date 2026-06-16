@@ -1,5 +1,6 @@
 import random
 import string
+from uuid import UUID
 
 from django.utils import timezone
 from django.contrib.auth.hashers import check_password
@@ -20,7 +21,8 @@ from .models import (
     Meeting,
     MeetingParticipant,
     MeetingSession,
-    ParticipantSession
+    ParticipantSession,
+    ParticipantState
 )
 from .livekit_utils import (
     generate_join_token,
@@ -47,22 +49,53 @@ class ValidateMeetingView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, company=None, api_key=None, meeting_id=None):
-        try:
-            meeting = Meeting.objects.get(id=meeting_id)
-
-            return Response({
-                "title": meeting.title,
-                "datetime": str(meeting.scheduled_start),
-                "company_name": company if company else "Unknown",
-                "participants": [],
-                "meeting_code": meeting.meeting_code,
-            }, status=status.HTTP_200_OK)
-
-        except Meeting.DoesNotExist:
+        meeting = get_meeting_by_identifier(meeting_id)
+        if not meeting:
             return Response(
                 {"error": "Meeting not found"},
                 status=status.HTTP_404_NOT_FOUND
             )
+
+        return Response({
+            "title": meeting.title,
+            "datetime": str(meeting.scheduled_start),
+            "company_name": company if company else "Unknown",
+            "participants": [],
+            "meeting_code": meeting.meeting_code,
+        }, status=status.HTTP_200_OK)
+
+
+def get_meeting_by_identifier(meeting_identifier):
+    if not meeting_identifier:
+        return None
+
+    try:
+        uuid_value = UUID(meeting_identifier)
+        return Meeting.objects.get(id=uuid_value)
+    except (ValueError, Meeting.DoesNotExist):
+        return Meeting.objects.filter(meeting_code=meeting_identifier).first()
+
+
+def get_user_by_identifier(product, user_identifier, name=None):
+    if not user_identifier:
+        return None
+
+    try:
+        uuid_value = UUID(user_identifier)
+        return User.objects.get(id=uuid_value)
+    except (ValueError, User.DoesNotExist):
+        user = User.objects.filter(product=product, external_user_id=user_identifier).first()
+        if user:
+            return user
+
+        # Create a participant record when the user identifier is not a UUID
+        return User.objects.create(
+            product=product,
+            external_user_id=user_identifier,
+            email=f"{user_identifier}@huddle.local",
+            name=name or user_identifier,
+            role="participant"
+        )
 
 
 class ScheduleMeetingView(APIView):
@@ -259,12 +292,21 @@ class ParticipantStateView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, meeting_id, user_id):
+        meeting = get_meeting_by_identifier(meeting_id)
+        if not meeting:
+            return Response({"error": "Meeting not found"}, status=status.HTTP_404_NOT_FOUND)
 
         try:
-            state = ParticipantState.objects.get(
-                meeting_id=meeting_id,
-                user_id=user_id
-            )
+            user = None
+            try:
+                user = User.objects.get(id=UUID(user_id))
+            except (ValueError, User.DoesNotExist):
+                user = User.objects.filter(product=meeting.product, external_user_id=user_id).first()
+
+            if not user:
+                return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+
+            state = ParticipantState.objects.get(meeting=meeting, user=user)
 
             return Response({
                 "data": {
@@ -279,18 +321,28 @@ class ParticipantStateView(APIView):
                 {"error": "Not Found"},
                 status=404
             )
+
+
 class UpdateParticipantStateView(APIView):
 
     permission_classes = [AllowAny]
 
     def post(self, request):
 
-        meeting_id = request.data.get("meeting_id")
-        user_id = request.data.get("user_id")
+        meeting_identifier = request.data.get("meeting_id")
+        user_identifier = request.data.get("user_id")
+
+        meeting = get_meeting_by_identifier(meeting_identifier)
+        if not meeting:
+            return Response({"error": "Meeting not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        user = get_user_by_identifier(meeting.product, user_identifier)
+        if not user:
+            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
 
         state, created = ParticipantState.objects.get_or_create(
-            meeting_id=meeting_id,
-            user_id=user_id
+            meeting=meeting,
+            user=user
         )
 
         state.mic_on = request.data.get("mic_on", True)
