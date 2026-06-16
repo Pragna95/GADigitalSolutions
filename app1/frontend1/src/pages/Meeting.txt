@@ -346,14 +346,29 @@ const Meeting = () => {
         return `${minutes}:${seconds.toString().padStart(2, "0")}`;
     };
 
-    const handleSendMessage = () => {
-        if (message.trim() === "") return;
+    const handleSendMessage = async () => {
+    if (message.trim() === "") return;
+
+    try {
+        await api.post(`/api/meetings/api/chat/${meetingId}/`, {
+            user_id: localStorage.getItem("user_id"),
+            message: message
+        });
+
         setChatMessages([
             ...chatMessages,
-            { sender: "You", text: message }
+            {
+                sender: "You",
+                text: message
+            }
         ]);
+
         setMessage("");
-    };
+
+    } catch (error) {
+        console.error("Chat send failed:", error);
+    }
+};
 
     // Filter list for search queries
     const filteredSpeakers = speakers.filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()));

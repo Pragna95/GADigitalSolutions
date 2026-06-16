@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
+from .models import ChatMessage
 
 from .models import (
     ProductApiKey,
@@ -537,3 +538,40 @@ class LiveKitWebhookView(APIView):
 
         return Response({"status": "success"}, status=status.HTTP_200_OK)
 
+class ChatMessageView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, meeting_id):
+        messages = ChatMessage.objects.filter(
+            meeting__meeting_code=meeting_id
+        ).order_by("created_at")
+
+        data = []
+
+        for msg in messages:
+            data.append({
+                "id": str(msg.id),
+                "user": msg.user.name,
+                "message": msg.message,
+                "created_at": msg.created_at
+            })
+
+        return Response(data)
+
+    def post(self, request, meeting_id):
+        user_id = request.data.get("user_id")
+        message = request.data.get("message")
+
+        meeting = Meeting.objects.get(meeting_code=meeting_id)
+        user = User.objects.get(id=user_id)
+
+        chat = ChatMessage.objects.create(
+            meeting=meeting,
+            user=user,
+            message=message
+        )
+
+        return Response({
+            "id": str(chat.id),
+            "message": "saved"
+        })

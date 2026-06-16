@@ -3,6 +3,7 @@ from django.contrib.auth import views as auth_views
 from .views import *
 from .MeetingViews import *
 
+
 urlpatterns = [
     # Auth
     path('login/', CustomLoginView.as_view(), name='login'),
@@ -21,5 +22,6 @@ urlpatterns = [
     path('api/meetings/token/', LiveKitTokenView.as_view(), name='api_livekit_token'),
     path('api/meetings/moderate/', LiveKitModerationView.as_view(), name='api_livekit_moderate'),
     path('api/meetings/webhook/', LiveKitWebhookView.as_view(), name='api_livekit_webhook'),
+    path("api/chat/<str:meeting_id>/", ChatMessageView.as_view()),
 ]
 
