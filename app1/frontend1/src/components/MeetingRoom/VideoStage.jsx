@@ -192,7 +192,7 @@ const VideoStage = ({
                                             autoPlay
                                             playsInline
                                             ref={(el) => {
-                                                if (el) {
+                                                if (el && el.srcObject !== remote.stream) {
                                                     el.srcObject = remote.stream;
                                                 }
                                             }}

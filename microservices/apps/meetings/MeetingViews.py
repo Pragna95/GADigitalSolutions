@@ -20,7 +20,8 @@ from .models import (
     Meeting,
     MeetingParticipant,
     MeetingSession,
-    ParticipantSession
+    ParticipantSession,
+    ParticipantState
 )
 from .livekit_utils import (
     generate_join_token,

@@ -58,7 +58,7 @@ const MeetingRoom = () => {
     const [isLoadingState, setIsLoadingState] = useState(true);
     const navigate = useNavigate();
     const { meeting_id } = useParams();
-    const meetingId = meeting_id || "meeting_001";
+    const meetingId = meeting_id || "b40842cc-954a-4bc1-a9da-9036a03e7657";
     const [searchParams] = useSearchParams();
     const participantName = searchParams.get("name") || "Andaya";
 
@@ -304,7 +304,7 @@ const MeetingRoom = () => {
         }
 
         const socket = new WebSocket(
-            `${api.defaults.baseURL.replace("http", "ws")}/ws/participants/${meetingId}/`,
+            `ws://127.0.0.1:8000/ws/audio/${meetingId}/`
         );
         wsRef.current = socket;
 
@@ -338,6 +338,34 @@ const MeetingRoom = () => {
             Object.values(pcRefs.current).forEach((pc) => pc.close());
             wsRef.current = null;
         };
+
+        const toggleMic = () => {
+        const newMicState = !isMicOn;
+        setIsMicOn(newMicState);
+        
+        // THE FIX: Actually disable the hardware audio track
+        if (localStreamRef.current) {
+            localStreamRef.current.getAudioTracks().forEach(track => {
+                track.enabled = newMicState;
+            });
+        }
+        
+        updateParticipantState(newMicState, isVideoOn, isHandRaised);
+    };
+
+    const toggleVideo = () => {
+        const newVideoState = !isVideoOn;
+        setIsVideoOn(newVideoState);
+        
+        // THE FIX: Actually disable the hardware video track
+        if (localStreamRef.current) {
+            localStreamRef.current.getVideoTracks().forEach(track => {
+                track.enabled = newVideoState;
+            });
+        }
+        
+        updateParticipantState(isMicOn, newVideoState, isHandRaised);
+    };
 
         window.addEventListener("beforeunload", cleanup);
 

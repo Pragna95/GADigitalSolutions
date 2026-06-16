@@ -15,6 +15,7 @@ import LoginAuth from "./pages/LoginAuth";
 import SignupAuth from "./pages/SignupAuth";
 import AuthReturn from "./pages/AuthReturn";
 import ThankYou from "./pages/ThankYou";
+import MeetingRoom from "./components/MeetingRoom";
 
 // Layout Components
 import Sidebar from "@/components/layout/Sidebar";
@@ -133,6 +134,9 @@ function App() {
             path="/room/:meeting_id"
             element={<Meeting />}
           />
+
+         
+          <Route path="/audio/:meeting_id" element={<MeetingRoom />} />
           <Route path="/thank-you" element={<ThankYou />} />
 
           {/* Protected Routes */}
