@@ -9,7 +9,7 @@ import { Toaster } from "react-hot-toast";
 
 // Pages
 
-import Meeting from "./components/MeetingRoom";
+import Meeting from "./components/MeetingRoom/Meeting";
 import MeetingLobby from "./pages/MeetingLobby";
 import LoginAuth from "./pages/LoginAuth";
 import SignupAuth from "./pages/SignupAuth";

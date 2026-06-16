@@ -1,47 +1,53 @@
+import json
 import secrets
-from django.shortcuts import render, redirect
-from django.contrib.auth.mixins import LoginRequiredMixin
-from django.views import View
-from django.contrib import messages
-from django.contrib.auth.hashers import make_password
 from urllib.parse import urlencode
-from django.contrib.auth.views import LoginView
-from django.contrib.auth.forms import UserCreationForm
-from django.urls import reverse_lazy
-from django.views.generic import CreateView
-from .models import *
 
 from django.conf import settings
+from django.contrib import messages
+from django.contrib.auth.hashers import make_password
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.auth.views import LoginView
+from django.contrib.auth.forms import UserCreationForm
+from django.core.cache import cache
+from django.http import JsonResponse
+from django.shortcuts import render, redirect
+from django.urls import reverse_lazy
+from django.utils.decorators import method_decorator
+from django.utils.timezone import now
+from django.views import View
+from django.views.decorators.csrf import csrf_exempt
+from django.views.generic import CreateView
+
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+
+from .models import Product, ProductApiKey, ParticipantState, Recording
+
 
 class CustomLoginView(LoginView):
     template_name = 'auth/login.html'
-    redirect_authenticated_user = True # Redirects to dashboard if already logged in
+    redirect_authenticated_user = True
     
     def get_success_url(self):
-        # Read the raw 'next' parameter before Django strips it for being cross-domain
         redirect_to = self.request.POST.get(
             self.redirect_field_name, 
             self.request.GET.get(self.redirect_field_name, "")
         )
-        print(f"DEBUG CustomLoginView: redirect_to='{redirect_to}', FRONTEND_URL='{settings.FRONTEND_URL}'")
-        
-        # Explicitly allow redirect to our trusted frontend React app
         if redirect_to and redirect_to.startswith(settings.FRONTEND_URL):
-            print(f"DEBUG CustomLoginView: MATCHED frontend url, returning {redirect_to}")
             return redirect_to
             
         url = self.get_redirect_url()
-        print(f"DEBUG CustomLoginView: did NOT match, returning get_redirect_url '{url}' or super '{super().get_success_url()}'")
         return url or super().get_success_url()
     
     def form_invalid(self, form):
         messages.error(self.request, "Invalid username or password.")
         return super().form_invalid(form)
 
+
 class SignupView(CreateView):
     form_class = UserCreationForm
     template_name = 'auth/signup.html'
-    success_url = reverse_lazy('login') # On successful signup, navigates to login
+    success_url = reverse_lazy('login')
     
     def get_success_url(self):
         url = super().get_success_url()
@@ -55,25 +61,21 @@ class SignupView(CreateView):
         return super().form_valid(form)
 
     def form_invalid(self, form):
-        # If user already exists (or passwords don't match), it shows here
         messages.error(self.request, "Could not create account. Please check the errors below.")
         return super().form_invalid(form)
+
 
 class SuperAdminDashboardView(LoginRequiredMixin, View):
     template_name = 'super_admin/dashboard.html'
     
     def get(self, request, *args, **kwargs):
-        # We assume only superusers can access this dashboard
         if not request.user.is_superuser:
             messages.error(request, "You do not have permission to access the dashboard.")
             return redirect('/')
             
-        products = Product.objects.all().order_by('-created_at')
-        api_keys = ProductApiKey.objects.all().order_by('-created_at')
-        
         context = {
-            'products': products,
-            'api_keys': api_keys,
+            'products': Product.objects.all().order_by('-created_at'),
+            'api_keys': ProductApiKey.objects.all().order_by('-created_at'),
         }
         return render(request, self.template_name, context)
 
@@ -92,12 +94,7 @@ class SuperAdminDashboardView(LoginRequiredMixin, View):
             if Product.objects.filter(slug=slug).exists():
                 messages.error(request, f"Product with slug '{slug}' already exists.")
             else:
-                Product.objects.create(
-                    name=name,
-                    slug=slug,
-                    status=status,
-                    webhook_url=webhook_url
-                )
+                Product.objects.create(name=name, slug=slug, status=status, webhook_url=webhook_url)
                 messages.success(request, f"Product '{name}' registered successfully.")
                 
         elif action == 'generate_api_key':
@@ -107,11 +104,8 @@ class SuperAdminDashboardView(LoginRequiredMixin, View):
             
             try:
                 product = Product.objects.get(id=product_id)
-                
-                # Generate a secure random string for the API key
                 raw_api_key = secrets.token_urlsafe(32)
                 
-                # Create the API key record
                 ProductApiKey.objects.create(
                     product=product,
                     api_key_hash=make_password(raw_api_key),
@@ -120,7 +114,6 @@ class SuperAdminDashboardView(LoginRequiredMixin, View):
                     is_active=True
                 )
                 
-                # Important: Show the raw key in a flash message (using the raw-key-box HTML defined in template)
                 msg = f"API Key generated for {product.name} ({environment}):<br><br>"
                 msg += f"<div class='raw-key-box'>{raw_api_key}</div>"
                 msg += "Please copy it now. You will not be able to see it again!"
@@ -130,3 +123,226 @@ class SuperAdminDashboardView(LoginRequiredMixin, View):
                 messages.error(request, "Selected product does not exist.")
                 
         return redirect('super_admin_dashboard')
+
+
+# --- Real-time Video Meeting & State Endpoints ---
+
+def _broadcast_meeting_update(meeting_id, data):
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        f"meeting_{meeting_id}",
+        {
+            "type": "participant_update",
+            "data": data
+        }
+    )
+
+@csrf_exempt
+def toggle_mic(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "Only POST allowed"}, status=400)
+        
+    data = json.loads(request.body)
+    user_id = data.get("user_id")
+    meeting_id = data.get("meeting_id")
+    mic_on = bool(data.get("mic_on"))
+    username = data.get("username", f"User_{user_id}")
+
+    participant, _ = ParticipantState.objects.get_or_create(
+        user_id=user_id,
+        meeting_id=meeting_id,
+        defaults={"username": username}
+    )
+
+    participant.mic_on = mic_on
+    participant.save()
+
+    _broadcast_meeting_update(meeting_id, {
+        "event": "state_changed",
+        "user_id": user_id,
+        "mic_on": participant.mic_on,
+        "video_on": participant.video_on,
+        "hand_raised": participant.hand_raised
+    })
+
+    return JsonResponse({"message": "Mic state updated", "mic_on": participant.mic_on})
+
+
+@csrf_exempt
+def start_recording(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "Only POST allowed"}, status=400)
+        
+    data = json.loads(request.body)
+    meeting_link = data.get("meeting_link")
+    started_by = data.get("started_by")
+
+    recording = Recording.objects.create(
+        meeting_link=meeting_link,
+        started_by=started_by,
+        processing_status="STARTED"
+    )
+
+    cache.set(f"meeting:{meeting_link}:recording", {"recording": True, "recording_id": recording.id}, timeout=None)
+    return JsonResponse({"message": "Recording Started", "recording_id": recording.id})
+
+    
+@csrf_exempt
+def stop_recording(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "Only POST allowed"}, status=400)
+        
+    data = json.loads(request.body)
+    recording_id = data.get("recording_id")
+    meeting_link = data.get("meeting_link")
+
+    try:
+        recording = Recording.objects.get(id=recording_id)
+    except Recording.DoesNotExist:
+        return JsonResponse({"error": "Recording session not found"}, status=404)
+
+    recording.processing_status = "STOPPED"
+    recording.ended_at = now()
+    duration = (recording.ended_at - recording.started_at).seconds
+    recording.duration_seconds = duration
+    recording.save()
+
+    cache.set(f"meeting:{meeting_link}:recording", {"recording": False}, timeout=None)
+    return JsonResponse({"message": "Recording Stopped", "duration": duration})
+
+
+@csrf_exempt
+def start_screen_share(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "Only POST allowed"}, status=400)
+        
+    data = json.loads(request.body)
+    meeting_link = data.get("meeting_link")
+    user_id = data.get("user_id")
+
+    if not meeting_link or not user_id:
+        return JsonResponse({"message": "Missing data"}, status=400)
+
+    key = f"meeting:{meeting_link}:screen_share"
+    current = cache.get(key)
+
+    if current:
+        return JsonResponse({"message": "Someone is already sharing screen", "current_user": current.get("user_id")}, status=400)
+
+    cache.set(key, {"user_id": user_id, "started_at": int(now().timestamp())}, timeout=None)
+    return JsonResponse({"message": "Screen sharing started", "user_id": user_id})
+
+
+@csrf_exempt
+def stop_screen_share(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "Only POST allowed"}, status=400)
+        
+    data = json.loads(request.body)
+    meeting_link = data.get("meeting_link")
+    user_id = data.get("user_id")
+
+    if not meeting_link or not user_id:
+        return JsonResponse({"message": "Missing data"}, status=400)
+
+    key = f"meeting:{meeting_link}:screen_share"
+    current = cache.get(key)
+
+    if not current:
+        return JsonResponse({"message": "No active screen share"}, status=400)
+
+    if current.get("user_id") != user_id:
+        return JsonResponse({"message": "You are not the active screen sharer"}, status=403)
+
+    cache.delete(key)
+    return JsonResponse({"message": "Screen sharing stopped"})
+
+
+def current_screen_sharer(request, meeting_link):
+    return JsonResponse({"screen_share": cache.get(f"meeting:{meeting_link}:screen_share")})
+
+
+@csrf_exempt
+def get_participant(request, meeting_id, user_id):
+    participant, _ = ParticipantState.objects.get_or_create(
+        meeting_id=meeting_id,
+        user_id=user_id,
+        defaults={
+            "username": f"User_{user_id}",
+            "mic_on": True,
+            "video_on": True,
+            "hand_raised": False
+        }
+    )
+    return JsonResponse({
+        "data": {
+            "user_id": participant.user_id,
+            "username": participant.username,
+            "meeting_id": participant.meeting_id,
+            "mic_on": participant.mic_on,
+            "video_on": participant.video_on,
+            "hand_raised": participant.hand_raised
+        }
+    })
+
+
+@csrf_exempt
+def update_participant(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "Only POST allowed"}, status=400)
+        
+    data = json.loads(request.body)
+    user_id = data.get("user_id")
+    meeting_id = data.get("meeting_id")
+    username = data.get("username")
+
+    participant, created = ParticipantState.objects.get_or_create(
+        user_id=user_id,
+        meeting_id=meeting_id,
+        defaults={"username": username or f"User_{user_id}"}
+    )
+
+    if username and not created:
+        participant.username = username
+
+    # Safe evaluation of boolean payload keys
+    if "mic_on" in data:
+        participant.mic_on = bool(data["mic_on"])
+    if "video_on" in data:
+        participant.video_on = bool(data["video_on"])
+    if "hand_raised" in data:
+        participant.hand_raised = bool(data["hand_raised"])
+        
+    participant.save()
+
+    payload = {
+        "event": "state_changed",
+        "user_id": participant.user_id,
+        "username": participant.username,
+        "mic_on": participant.mic_on,
+        "video_on": participant.video_on,
+        "hand_raised": participant.hand_raised
+    }
+    
+    _broadcast_meeting_update(meeting_id, payload)
+
+    return JsonResponse({
+        "message": "Participant updated",
+        "data": {**payload, "meeting_id": meeting_id}
+    })
+
+
+@csrf_exempt
+def get_all_participants(request, meeting_id):
+    participants = ParticipantState.objects.filter(meeting_id=meeting_id)
+    data = [
+        {
+            "user_id": p.user_id,
+            "username": p.username,
+            "mic_on": p.mic_on,
+            "video_on": p.video_on,
+            "hand_raised": p.hand_raised
+        }
+        for p in participants
+    ]
+    return JsonResponse({"data": data})

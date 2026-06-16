@@ -13,6 +13,9 @@ class Product(models.Model):
     class Meta:
         db_table = 'products'
 
+    def __str__(self):
+        return self.name
+
 
 class ProductApiKey(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -43,6 +46,9 @@ class User(models.Model):
 
     class Meta:
         db_table = 'users'
+
+    def __str__(self):
+        return f"{self.name} ({self.email})"
 
 
 class AuditLog(models.Model):
@@ -81,6 +87,9 @@ class Meeting(models.Model):
 
     class Meta:
         db_table = 'meetings'
+
+    def __str__(self):
+        return self.title
 
 
 class MeetingParticipant(models.Model):
@@ -148,17 +157,23 @@ class ParticipantSession(models.Model):
 class Recording(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     meeting_session = models.ForeignKey(MeetingSession, on_delete=models.CASCADE, related_name='recordings')
-    recording_type = models.CharField(max_length=50)
-    storage_provider = models.CharField(max_length=50)
-    file_path = models.TextField()
+    meeting_link = models.URLField(blank=True, null=True)
+    recording_type = models.CharField(max_length=50, default="VIDEO")
+    storage_provider = models.CharField(max_length=50, default="LOCAL")
+    file_path = models.TextField(blank=True, null=True)
     file_size_bytes = models.BigIntegerField(default=0)
     duration_seconds = models.IntegerField(default=0)
-    mime_type = models.CharField(max_length=100)
-    processing_status = models.CharField(max_length=50)
-    created_at = models.DateTimeField(auto_now_add=True)
+    mime_type = models.CharField(max_length=100, blank=True, null=True)
+    processing_status = models.CharField(max_length=50, default="STARTED")
+    started_by = models.CharField(max_length=100, blank=True, null=True)
+    started_at = models.DateTimeField(auto_now_add=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = 'recordings'
+
+    def __str__(self):
+        return f"Recording {self.id} - {self.processing_status}"
 
 
 class Transcript(models.Model):
@@ -175,45 +190,30 @@ class Transcript(models.Model):
 
     class Meta:
         db_table = 'transcripts'
+
+
 class ParticipantState(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-
-    meeting = models.ForeignKey(
-        Meeting,
-        on_delete=models.CASCADE
-    )
-
-    user = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE
-    )
-
+    meeting = models.ForeignKey(Meeting, on_delete=models.CASCADE, related_name='participant_states')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='participant_states')
+    username = models.CharField(max_length=100, blank=True, null=True)
     mic_on = models.BooleanField(default=True)
     video_on = models.BooleanField(default=True)
     hand_raised = models.BooleanField(default=False)
-
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "participant_states"
 
-        
+    def __str__(self):
+        return f"{self.username or self.user.name} in {self.meeting.id}"
+
+
 class ChatMessage(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-
-    meeting = models.ForeignKey(
-        Meeting,
-        on_delete=models.CASCADE,
-        related_name="messages"
-    )
-
-    user = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE
-    )
-
+    meeting = models.ForeignKey(Meeting, on_delete=models.CASCADE, related_name="messages")
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
     message = models.TextField()
-
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
