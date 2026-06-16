@@ -276,9 +276,17 @@ const MeetingRoom = () => {
         const setupMedia = async () => {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                    },
                     video: true,
-                    audio: true,
                 });
+                console.log(
+                    "Audio Tracks:",
+                    stream.getAudioTracks()
+                );
                 localStreamRef.current = stream;
                 if (localVideoRef.current) {
                     localVideoRef.current.srcObject = stream;
@@ -299,7 +307,10 @@ const MeetingRoom = () => {
     }, []);
 
     useEffect(() => {
-        if (!isWebRtcReady) {
+        if (!isWebRtcReady || !meetingId) {
+            if (!meetingId) {
+                console.warn("Meeting ID missing, skipping websocket setup.");
+            }
             return;
         }
 
@@ -396,8 +407,12 @@ const MeetingRoom = () => {
     const API_URL = "http://127.0.0.1:8000/api/meetings";
 
     useEffect(() => {
+        if (!meetingId) {
+            console.warn("Missing meetingId, skipping participant state fetch.");
+            return;
+        }
         fetchParticipantState();
-    }, []);
+    }, [meetingId]);
 
     const fetchParticipantState = async () => {
         try {
@@ -437,6 +452,7 @@ const MeetingRoom = () => {
         try {
             const apiKey = localStorage.getItem("api_key");
             const userId = "042c3663-c7bb-4783-b2a5-71b715b342b2";
+            console.log("meetingId =", meetingId);
             await axios.post(
                 `${API_URL}/participant/update/`,
                 {

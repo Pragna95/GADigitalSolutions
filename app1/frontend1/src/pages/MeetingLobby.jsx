@@ -150,8 +150,8 @@ export default function MeetingLobby() {
             alert("Please enter your name to join the meeting.");
             return;
         }
-        // Navigate to the dynamic meeting room
-        navigate(`/room/${meetingDetails?.meeting_code || meeting_id}?name=${encodeURIComponent(finalName)}`);
+        // Navigate to the dynamic meeting room using the meeting UUID so backend lookups stay consistent.
+        navigate(`/room/${meeting_id}?name=${encodeURIComponent(finalName)}`);
     };
 
     if (loading) {

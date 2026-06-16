@@ -1,0 +1,94 @@
+[33md35742c[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Audio module code available but not tested yet
+[33maaac226[m Add email sending feature
+[33m8a5fe20[m Add email sending feature
+[33maa87c8e[m Rectified errors
+[33mfa1c187[m Redis setup
+[33ma8955ba[m frontend updated
+[33m6462eb0[m Audio and video module updated
+[33m8afc46b[m Delete Huddle-main directory
+[33m6315927[m updated project
+[33m64d2272[m[33m ([m[1;31morigin/Pramod[m[33m)[m code restructured
+[33me68992b[m after modification
+[33m0b5c7d1[m implement-host-signup-api-key-auth-email-flow
+[33m77ed9d3[m checkpoint-before-ai
+[33m6c6e14c[m Meeting link is directing to meeting lobby
+[33mbc352f4[m Meeting link is genertaed and mails sent
+[33mb959fca[m API keys gets generated after host logs in
+[33m5d70b24[m Login Authentication is working
+[33m07f22a7[m UI update
+[33m6de62d2[m m
+[33m4751446[m A
+[33m21764d3[m Colours done
+[33m20239b5[m Frontend is almost done
+[33m6b39d7f[m Merge branch 'Team-A'
+[33m30b3dbf[m Team-B frontend is  here
+[33mb829e50[m m
+[33m9677733[m m
+[33m83c6a3f[m Chat window
+[33ma277960[m m
+[33mb264516[m updated participant state
+[33mf0a28c7[m Merge branch 'BackupForB' of https://github.com/Pragna95/Huddle into BackupForB
+[33m5ea0b24[m m
+[33m62ea77a[m[33m ([m[1;31morigin/BackupForB[m[33m)[m updated ai summary and transcript
+[33m176f33c[m m
+[33m7b7e07d[m m
+[33m6e93591[m commit
+[33m09522b8[m updated ai summary and transcript
+[33mb1575bd[m commit
+[33m7cd49e6[m Merge branch 'Team-A' of https://github.com/Pragna95/GADigitalSolutions into Team-A
+[33mb786782[m updated participant state
+[33m7d4643f[m updated ai summary and transcript
+[33m7c647b9[m updated advanceschedule.jsx
+[33m4e0b6db[m Merge branch 'BackupForB' into Team-B
+[33me13a50b[m Merge branch 'BackupForB' of https://github.com/Pragna95/Huddle into BackupForB
+[33m45c7691[m one
+[33mc43bfff[m Commit
+[33mafe9f12[m Screen sharing backend
+[33md22f707[m Merge branch 'Team-A' of https://github.com/Pragna95/Huddle into Team-A git push orgin Team- the commit.
+[33meb646cc[m Added recording backend integration
+[33m02eeb83[m Enabled recording option  and modified icons
+[33m589aa22[m Enabled recording and modified icons
+[33mb3551d0[m Icons change
+[33md343f01[m updated menu page
+[33m60d128f[m updated handrise
+[33m6cdb4a4[m[33m ([m[1;31morigin/Team-B[m[33m)[m Link format changed
+[33m63c681f[m edited sessioncard.jsx
+[33m919de32[m updated menu page
+[33mfdafbb7[m updated participants grids
+[33ma4d5908[m Resolved merge conflicts
+[33m48d9c7c[m My Local Changes
+[33mf098317[m Resolved merge conflict
+[33m662901a[m added participants grids
+[33mf4c3f9c[m Participant List
+[33m8fec007[m Migrated modules to new backend structure
+[33m07df52c[m Merge branch 'main' into Team-A
+[33m755e3e7[m Updated Frontend
+[33m9099c7c[m edited advanceschedule.jsx
+[33mec2a003[m Merge branch 'Team-B' of https://github.com/Pragna95/Huddle into Team-B
+[33ma09b81a[m Chat folder updated
+[33m8d2817b[m Scheduled Meetings dialog box needs to be redesigned
+[33mc8717c0[m added hand raise and participants panel
+[33m29f314d[m HAVP
+[33m71044fa[m HAVP
+[33m42ef7d9[m Updated meeting page using tailwind css
+[33me99c5cd[m Cleaned cache files and updated gitignore
+[33m1f56732[m Resolved merge conflicts and updated gitignore
+[33m1181193[m My work before pulling
+[33md05637d[m Merge branch 'BackupForB' of https://github.com/Pragna95/Huddle into BackupForB
+[33m73a6791[m Working on scheduled meetings
+[33m74f839a[m added ai summary and view transcript
+[33m280aaaf[m Backend is dockerized
+[33me58756c[m Frontend is not changed yet
+[33m1d0b47e[m Backend is dockerized and frontend is created im main folder
+[33m93bd79c[m Readme file is committed in Team-B
+[33m3a0a50d[m Backend in Team-B is committed
+[33m156ae0e[m Pull backend from Team-B
+[33m3c26037[m Add Django backend with postgres config
+[33m95e7f90[m Update gitignore: remove sqlite, use postgress only
+[33m4631f94[m Update project name and contribution details in README
+[33m60f015c[m[33m ([m[1;31morigin/BackupA[m[33m)[m Added participant rendering UI
+[33mf3d3f1b[m Huddle dashboard frontend is done
+[33m14f21fe[m MeetingLayout
+[33mdd4f6b9[m super admin module
+[33m33305a4[m Initial modular backend architecture setup
+[33m36845b0[m Initial commit
