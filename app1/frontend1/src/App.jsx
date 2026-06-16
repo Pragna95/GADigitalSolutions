@@ -109,34 +109,45 @@ function App() {
           <Route path="/auth-return" element={<AuthReturn />} />
 
           {/* Meetings */}
+
           <Route path="/meeting" element={<Meeting />} />
+
+          {/* New professional format */}
           <Route
-            path="/meeting/:company/:letter/:api_key/:meeting_id"
+            path="/:meetingCode/:apiKey/:meetingId"
             element={<MeetingLobby />}
           />
+
+          <Route
+            path="/:meetingCode/:meetingId"
+            element={<MeetingLobby />}
+          />
+
+          {/* Legacy links */}
           <Route
             path="/meeting/:company/:api_key/:meeting_id"
             element={<MeetingLobby />}
           />
+
           <Route
-            path="/:company/:letter/:api_key/:meeting_id"
+            path="/meeting/:company/:letter/:api_key/:meeting_id"
             element={<MeetingLobby />}
           />
-          <Route
-            path="/:company/:api_key/:meeting_id"
-            element={<MeetingLobby />}
-          />
+
           <Route
             path="/lobby/:meeting_id"
             element={<MeetingLobby />}
           />
+
           <Route
             path="/room/:meeting_id"
             element={<Meeting />}
           />
 
-         
-          <Route path="/audio/:meeting_id" element={<MeetingRoom />} />
+          <Route
+            path="/audio/:meeting_id"
+            element={<MeetingRoom />}
+          />
           <Route path="/thank-you" element={<ThankYou />} />
 
           {/* Protected Routes */}
