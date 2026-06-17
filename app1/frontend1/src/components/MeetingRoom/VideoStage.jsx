@@ -16,6 +16,7 @@ const VideoStage = ({
     isVideoOn,
     remoteStreams = [],
     roomPeers = {},
+    handRaiseCount = 0,
 }) => {
     // Determine the primary stream to focus on the center stage
     const primaryRemoteStream = useMemo(() => {
@@ -162,38 +163,26 @@ const VideoStage = ({
                         </button>
 
                         {/* HAND RAISE OVERLAY */}
-                        <div className="flex items-end gap-3">
-                            <button
-                                onClick={() => {
-                                    setShowHandRaise(!showHandRaise);
-                                    setShowParticipants(false);
-                                    setShowMenuPage(false);
-                                }}
-                                className="bg-white hover:bg-gray-50 h-[38px] px-4 rounded-[22px] flex items-center justify-center shadow-lg border border-gray-100 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
-                            >
-                                <span className="text-[18px] font-bold leading-none text-black">
-                                    ✋ 12
-                                </span>
-                            </button>
-
-                            <div className="relative w-[96px] h-[40px] hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer group">
-                                <img
-                                    src="https://randomuser.me/api/portraits/women/33.jpg"
-                                    alt=""
-                                    className="absolute left-0 top-0 w-10 h-10 rounded-[12px] border-2 border-white object-cover shadow-md group-hover:-translate-x-1 transition-transform duration-300"
-                                />
-                                <img
-                                    src="https://randomuser.me/api/portraits/men/33.jpg"
-                                    alt=""
-                                    className="absolute left-7 top-0 w-10 h-10 rounded-[12px] border-2 border-white object-cover shadow-md transition-transform duration-300"
-                                />
-                                <div className="absolute left-[56px] top-0 w-10 h-10 rounded-[12px] border-2 border-white bg-[#ACBFFF] flex items-center justify-center shadow-md group-hover:translate-x-1 transition-transform duration-300">
-                                    <span className="text-[12px] font-semibold text-[#394C84]">
-                                        +3
+                        {handRaiseCount > 0 && (
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => {
+                                        setShowHandRaise(!showHandRaise);
+                                        setShowParticipants(false);
+                                        setShowMenuPage(false);
+                                    }}
+                                    className="bg-white hover:bg-gray-50 h-[38px] px-4 rounded-[22px] flex items-center justify-center shadow-lg border border-gray-100 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
+                                >
+                                    <span className="text-[18px] font-bold leading-none text-black">
+                                        ✋ {handRaiseCount}
                                     </span>
+                                </button>
+
+                                <div className="w-10 h-10 rounded-[12px] border-2 border-white bg-[#ACBFFF] flex items-center justify-center shadow-md">
+                                    <span className="text-[16px] text-[#394C84]">👤</span>
                                 </div>
                             </div>
-                        </div>
+                        )}
                     </div>
 
                     {/* ONLY SHOW SUB-LABEL IF NOT SHOWING REMOTE USER IN CENTER */}

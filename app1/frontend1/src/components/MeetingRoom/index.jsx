@@ -2,23 +2,13 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import axios from "axios";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import api from "../../services/api.js";
+import { toast } from "react-hot-toast";
 
 // Subcomponents
 import Header from "./Header.jsx";
 import Footer from "./Footer.jsx";
 import VideoStage from "./VideoStage.jsx";
 import Sidebar from "./Sidebar.jsx";
-
-const handRaiseMembers = [
-    "Rahul",
-    "Anika",
-    "James",
-    "Priya",
-    "Michael",
-    "Fatima",
-    "Kevin",
-    "Sofia",
-];
 
 const participantMembers = [
     "Rahul",
@@ -50,6 +40,9 @@ const MeetingRoom = () => {
     const [showMenuPage, setShowMenuPage] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
     const [isHandRaised, setIsHandRaised] = useState(false);
+    const [handRaisedUsers, setHandRaisedUsers] = useState({});
+    const handRaiseMembers = Object.values(handRaisedUsers);
+    const handRaiseCount = Object.keys(handRaisedUsers).length;
     const [recordingTime, setRecordingTime] = useState(0);
     const [recordingStopped, setRecordingStopped] = useState(false);
     const [isMicOn, setIsMicOn] = useState(true);
@@ -327,7 +320,29 @@ const MeetingRoom = () => {
         socket.onmessage = async (event) => {
             try {
                 const payload = JSON.parse(event.data);
-                await handleSignalMessage(payload);
+                if (payload.event === "state_changed") {
+                    const { user_id, username, hand_raised } = payload;
+                    const localUserId = "042c3663-c7bb-4783-b2a5-71b715b342b2";
+                    if (user_id && user_id !== localUserId) {
+                        setHandRaisedUsers((prev) => {
+                            const next = { ...prev };
+                            if (hand_raised) {
+                                next[user_id] = username || `Guest ${user_id.slice(-4)}`;
+                                toast(`${username || "Someone"} raised their hand`, {
+                                    icon: "✋",
+                                    id: `hand-raise-${user_id}`,
+                                    duration: 60000,
+                                });
+                            } else {
+                                delete next[user_id];
+                                toast.dismiss(`hand-raise-${user_id}`);
+                            }
+                            return next;
+                        });
+                    }
+                } else {
+                    await handleSignalMessage(payload);
+                }
             } catch (err) {
                 console.error("Invalid websocket message", err);
             }
@@ -412,7 +427,24 @@ const MeetingRoom = () => {
             return;
         }
         fetchParticipantState();
+        fetchAllParticipants();
     }, [meetingId]);
+
+    const fetchAllParticipants = async () => {
+        try {
+            const response = await axios.get(`${API_URL}/participants/${meetingId}/`);
+            const participantsList = response.data.data || [];
+            const initialHandRaised = {};
+            participantsList.forEach((p) => {
+                if (p.hand_raised) {
+                    initialHandRaised[p.user_id] = p.username || `Guest ${p.user_id.slice(-4)}`;
+                }
+            });
+            setHandRaisedUsers(initialHandRaised);
+        } catch (error) {
+            console.error("Failed to fetch all participants:", error);
+        }
+    };
 
     const fetchParticipantState = async () => {
         try {
@@ -433,6 +465,12 @@ const MeetingRoom = () => {
                 setIsVideoOn(data.video_on);
                 setIsHandRaised(data.hand_raised);
                 console.log("Participant Loaded", data);
+                if (data.hand_raised) {
+                    setHandRaisedUsers((prev) => ({
+                        ...prev,
+                        [userId]: displayName,
+                    }));
+                }
             }
         } catch (error) {
             if (error.response && error.response.status === 404) {
@@ -458,6 +496,7 @@ const MeetingRoom = () => {
                 {
                     user_id: userId,
                     meeting_id: meetingId,
+                    username: displayName,
                     mic_on: mic,
                     video_on: video,
                     hand_raised: hand,
@@ -489,6 +528,22 @@ const MeetingRoom = () => {
     const toggleHandRaise = () => {
         const newHand = !isHandRaised;
         setIsHandRaised(newHand);
+        const userId = "042c3663-c7bb-4783-b2a5-71b715b342b2";
+        setHandRaisedUsers((prev) => {
+            const next = { ...prev };
+            if (newHand) {
+                next[userId] = displayName;
+                toast("You raised your hand", {
+                    icon: "✋",
+                    id: `hand-raise-${userId}`,
+                    duration: 60000,
+                });
+            } else {
+                delete next[userId];
+                toast.dismiss(`hand-raise-${userId}`);
+            }
+            return next;
+        });
         updateParticipantState(isMicOn, isVideoOn, newHand);
     };
 
@@ -520,6 +575,7 @@ const MeetingRoom = () => {
                     isVideoOn={isVideoOn}
                     remoteStreams={remoteStreams}
                     roomPeers={roomPeers}
+                    handRaiseCount={handRaiseCount}
                 />
 
                 <Sidebar

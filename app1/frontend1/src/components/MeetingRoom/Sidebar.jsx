@@ -49,7 +49,13 @@ const Sidebar = ({
                     <div className="space-y-3 overflow-y-auto flex-1">
                         {(showHandRaise ? handRaiseMembers : participantMembers.slice(0, 8)).map((member, index) => (
                             <div key={index} className="border border-slate-100 rounded-xl px-3 py-2 flex items-center gap-3 hover:bg-slate-50 cursor-pointer">
-                                <img src={`https://randomuser.me/api/portraits/${index % 2 === 0 ? "men" : "women"}/${index + 20}.jpg`} className="w-10 h-10 rounded-full object-cover" alt="" />
+                                {showHandRaise ? (
+                                    <div className="w-10 h-10 rounded-[12px] bg-[#ACBFFF] flex items-center justify-center shadow-md shrink-0">
+                                        <span className="text-[16px] text-[#394C84]">👤</span>
+                                    </div>
+                                ) : (
+                                    <img src={`https://randomuser.me/api/portraits/${index % 2 === 0 ? "men" : "women"}/${index + 20}.jpg`} className="w-10 h-10 rounded-full object-cover" alt="" />
+                                )}
                                 <span className="text-sm font-semibold text-slate-700">{member}</span>
                             </div>
                         ))}
