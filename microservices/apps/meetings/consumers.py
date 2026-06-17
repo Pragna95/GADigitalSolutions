@@ -59,6 +59,9 @@ class MeetingConsumer(AsyncJsonWebsocketConsumer):
         message.pop("sender_channel_name", None)
         await self.send_json(message)
 
+    async def participant_update(self, event):
+        await self.send_json(event["data"])
+
 
 class ParticipantConsumer(AsyncJsonWebsocketConsumer):
 

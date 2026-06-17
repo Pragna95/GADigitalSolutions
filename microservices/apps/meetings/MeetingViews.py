@@ -338,12 +338,13 @@ class UpdateParticipantStateView(APIView):
 
         meeting_identifier = request.data.get("meeting_id")
         user_identifier = request.data.get("user_id")
+        username = request.data.get("username")
 
         meeting = get_meeting_by_identifier(meeting_identifier)
         if not meeting:
             return Response({"error": "Meeting not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        user = get_user_by_identifier(meeting.product, user_identifier)
+        user = get_user_by_identifier(meeting.product, user_identifier, name=username)
         if not user:
             return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -352,11 +353,36 @@ class UpdateParticipantStateView(APIView):
             user=user
         )
 
+        if username:
+            state.username = username
+            if user.name != username:
+                user.name = username
+                user.save()
+
         state.mic_on = request.data.get("mic_on", True)
         state.video_on = request.data.get("video_on", True)
         state.hand_raised = request.data.get("hand_raised", False)
 
         state.save()
+
+        # Broadcast update to websocket layer
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f"meeting_{meeting.id}",
+            {
+                "type": "participant_update",
+                "data": {
+                    "event": "state_changed",
+                    "user_id": user_identifier,
+                    "username": state.username or user.name,
+                    "mic_on": state.mic_on,
+                    "video_on": state.video_on,
+                    "hand_raised": state.hand_raised
+                }
+            }
+        )
 
         return Response({
             "message": "updated"
