@@ -378,9 +378,12 @@ def update_participant(request):
         if username and not created:
             participant.username = username
 
-        participant.mic_on = mic_on
-        participant.video_on = video_on   
-        participant.hand_raised = hand_raised
+        if mic_on is not None:
+            participant.mic_on = bool(mic_on)
+        if video_on is not None:
+            participant.video_on = bool(video_on)   
+        if hand_raised is not None:
+            participant.hand_raised = bool(hand_raised)
         participant.save()
 
         # Broadcast update to websocket layer

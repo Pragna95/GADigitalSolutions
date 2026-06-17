@@ -97,21 +97,31 @@ def get_user_by_identifier(product, user_identifier, name=None):
         return None
 
     try:
-        uuid_value = UUID(user_identifier)
+        uuid_value = UUID(str(user_identifier))
         return User.objects.get(id=uuid_value)
     except (ValueError, TypeError, User.DoesNotExist):
-        user = User.objects.filter(product=product, external_user_id=user_identifier).first()
+        user = User.objects.filter(product=product, external_user_id=str(user_identifier)).first()
         if user:
             return user
 
-        # Create a participant record when the user identifier is not a UUID
-        return User.objects.create(
-            product=product,
-            external_user_id=user_identifier,
-            email=f"{user_identifier}@huddle.local",
-            name=name or user_identifier,
-            role="participant"
-        )
+        # Attempt to parse as UUID to use as primary key
+        try:
+            uuid_value = UUID(str(user_identifier))
+        except (ValueError, TypeError):
+            uuid_value = None
+
+        create_kwargs = {
+            "product": product,
+            "external_user_id": str(user_identifier),
+            "email": f"{user_identifier}@huddle.local",
+            "name": name or str(user_identifier),
+            "role": "participant"
+        }
+        if uuid_value:
+            create_kwargs["id"] = uuid_value
+
+        # Create a participant record
+        return User.objects.create(**create_kwargs)
 
 
 class ScheduleMeetingView(APIView):
@@ -359,9 +369,17 @@ class UpdateParticipantStateView(APIView):
                 user.name = username
                 user.save()
 
-        state.mic_on = request.data.get("mic_on", True)
-        state.video_on = request.data.get("video_on", True)
-        state.hand_raised = request.data.get("hand_raised", False)
+        mic_on = request.data.get("mic_on")
+        if mic_on is not None:
+            state.mic_on = bool(mic_on)
+
+        video_on = request.data.get("video_on")
+        if video_on is not None:
+            state.video_on = bool(video_on)
+
+        hand_raised = request.data.get("hand_raised")
+        if hand_raised is not None:
+            state.hand_raised = bool(hand_raised)
 
         state.save()
 
@@ -426,7 +444,7 @@ class LiveKitTokenView(APIView):
         )
 
         # We also map settings.LIVEKIT_URL
-        lk_url = settings.LIVEKIT_URL
+        lk_url = getattr(settings, "LIVEKIT_URL", "http://localhost:7880")
         # Frontend usually expects ws:// or wss:// for client connection
         if lk_url.startswith("http"):
             lk_url = lk_url.replace("http", "ws", 1)
