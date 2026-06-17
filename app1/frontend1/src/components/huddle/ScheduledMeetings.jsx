@@ -9,7 +9,8 @@ import {
 import { Button } from "../ui/button";
 import toast from "react-hot-toast";
 import { Copy, Calendar, Users, RefreshCw } from "lucide-react";
-import api,{microserviceApi} from "../../services/api";
+import api, { microserviceApi } from "../../services/api";
+import { useNavigate } from "react-router-dom";
 
 export default function ScheduledMeetings({ refreshTrigger }) {
   const [meetings, setMeetings] = useState([]);
@@ -57,7 +58,7 @@ export default function ScheduledMeetings({ refreshTrigger }) {
     if (linkText.startsWith("/")) {
       return `${window.location.origin}${linkText}`;
     }
-    return `${window.location.origin}/${linkText}`;
+    return `${window.location.origin}${linkText}`;
   };
 
   const handleCopyLink = async (linkText) => {
@@ -72,6 +73,23 @@ export default function ScheduledMeetings({ refreshTrigger }) {
       toast.error("Failed to copy link");
     }
   };
+
+  const navigate = useNavigate();
+
+  const handleOpenMeeting = (meeting) => {
+  if (!meeting) return;
+
+  const path = `/${meeting.meeting_code}/${meeting.id}`;
+
+  const token = localStorage.getItem("token");
+
+  if (token && token !== "null" && token !== "undefined") {
+    navigate(path);
+  } else {
+    sessionStorage.setItem("pending_meeting", path);
+    navigate("/login");
+  }
+};
 
   if (loading) {
     return (
@@ -177,8 +195,15 @@ export default function ScheduledMeetings({ refreshTrigger }) {
                 </div>
               </div>
 
-              {/* Close footer */}
+              {/* Footer */}
               <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <Button
+                  onClick={() => { handleOpenMeeting(selectedMeeting); setIsDialogOpen(false); }}
+                  className="px-4 h-10 rounded-lg bg-[#1e2b72] hover:bg-[#152060] text-white"
+                >
+                  Join / Open
+                </Button>
+
                 <Button
                   variant="outline"
                   onClick={() => setIsDialogOpen(false)}

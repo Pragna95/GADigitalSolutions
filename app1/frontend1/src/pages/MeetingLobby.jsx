@@ -16,7 +16,9 @@ import {
 import { microserviceApi } from "@/services/api";
 import placeholderImg from "../assets/placeholder.png";
 export default function MeetingLobby() {
-    const { company, api_key, meeting_id } = useParams();
+    const {company,api_key,meeting_id,meetingCode,meetingId,} = useParams();
+    const actualMeetingId = meeting_id || meetingId;
+    const actualMeetingCode = meetingCode;
     const navigate = useNavigate();
 
     const [loading, setLoading] = useState(true);
@@ -128,8 +130,9 @@ export default function MeetingLobby() {
                     );
                 } else {
                     response = await microserviceApi.get(
-                        `/api/meeting/validate-lobby/${meeting_id}`,
+                        `/api/meeting/validate-lobby/${actualMeetingId}/`,
                     );
+                    
                 }
                 setMeetingDetails(response.data);
                 setIsValid(true);
@@ -151,7 +154,7 @@ export default function MeetingLobby() {
             return;
         }
         // Navigate to the dynamic meeting room using the meeting UUID so backend lookups stay consistent.
-        navigate(`/room/${meeting_id}?name=${encodeURIComponent(finalName)}`);
+        navigate(`/room/${actualMeetingId}?name=${encodeURIComponent(finalName)}`);
     };
 
     if (loading) {
@@ -209,7 +212,7 @@ export default function MeetingLobby() {
     return (
         <div className="min-h-screen bg-[#F8F9FB] flex flex-col overflow-hidden font-sans">
             {/* ================= HEADER / TOP BAR ================= */}
-            <header className="h-[78px] bg-white border-b border-slate-200/80 flex items-center justify-between px-6 shrink-0 shadow-sm">
+            <header className="h-19.5 bg-white border-b border-slate-200/80 flex items-center justify-between px-6 shrink-0 shadow-sm">
                 <div className="flex items-center gap-4">
                     <button
                         onClick={() => navigate(-1)}
@@ -236,7 +239,7 @@ export default function MeetingLobby() {
             <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-10 flex flex-col lg:flex-row items-center justify-center gap-10 min-h-0 overflow-y-auto">
                 {/* Left Side: Meeting Preview Image & Media Toggles */}
                 <div className="flex-1 w-full max-w-2xl flex flex-col gap-4">
-                    <div className="relative rounded-[24px] overflow-hidden bg-slate-900 border border-slate-800 shadow-2xl w-full aspect-video flex items-center justify-center">
+                    <div className="relative rounded-3xl overflow-hidden bg-slate-900 border border-slate-800 shadow-2xl w-full aspect-video flex items-center justify-center">
                         {videoOn ? (
                             <video
                                 ref={videoRef}
@@ -359,7 +362,7 @@ export default function MeetingLobby() {
                                             </div>
                                         )}
                                     </div>
-                                    <span className="text-xs text-slate-500 font-semibold truncate max-w-[200px] ml-1">
+                                    <span className="text-xs text-slate-500 font-semibold truncate max-w-50 ml-1">
                                         {(meetingDetails?.participants || [])
                                             .slice(0, 2)
                                             .join(", ")}

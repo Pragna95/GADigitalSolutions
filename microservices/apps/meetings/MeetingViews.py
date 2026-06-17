@@ -16,21 +16,30 @@ from rest_framework.permissions import AllowAny
 from .models import ChatMessage
 
 from .models import (
-    ProductApiKey,
-    Product,
-    User,
-    Meeting,
-    MeetingParticipant,
-    MeetingSession,
-    ParticipantSession,
-    ParticipantState
-)
+     ProductApiKey,
+     Product,
+     User,
+     Meeting,
+     MeetingParticipant,
+     MeetingSession,
+     ParticipantSession,
+     ParticipantState
+ )
 from .livekit_utils import (
     generate_join_token,
     update_participant_permissions,
     mute_participant_track,
     kick_participant_from_room
 )
+
+
+def build_meeting_path(meeting, encrypted_api_key=None):
+    """
+    Return a canonical frontend-relative meeting path.
+    Format (preferred): /{meeting_code}/{encrypted_api_key}/{meeting_id}
+    If no encrypted_api_key is provided, return /{meeting_code}/{meeting_id}
+    """
+    return f"/{meeting.meeting_code}/{meeting.id}"
 
 
 def generate_meeting_code():
@@ -66,16 +75,22 @@ class ValidateMeetingView(APIView):
         }, status=status.HTTP_200_OK)
 
 
+from uuid import UUID
+
 def get_meeting_by_identifier(meeting_identifier):
     if not meeting_identifier:
         return None
 
     try:
-        uuid_value = UUID(meeting_identifier)
+        if isinstance(meeting_identifier, UUID):
+            uuid_value = meeting_identifier
+        else:
+            uuid_value = UUID(str(meeting_identifier))
         return Meeting.objects.get(id=uuid_value)
-    except (ValueError, Meeting.DoesNotExist):
-        return Meeting.objects.filter(meeting_code=meeting_identifier).first()
-
+    except (ValueError, TypeError, Meeting.DoesNotExist):
+         return Meeting.objects.filter(
+             meeting_code=str(meeting_identifier)
+         ).first()
 
 def get_user_by_identifier(product, user_identifier, name=None):
     if not user_identifier:
@@ -84,7 +99,7 @@ def get_user_by_identifier(product, user_identifier, name=None):
     try:
         uuid_value = UUID(user_identifier)
         return User.objects.get(id=uuid_value)
-    except (ValueError, User.DoesNotExist):
+    except (ValueError, TypeError, User.DoesNotExist):
         user = User.objects.filter(product=product, external_user_id=user_identifier).first()
         if user:
             return user
@@ -183,10 +198,10 @@ class ScheduleMeetingView(APIView):
     scheduled_start=scheduled_dt,
     timezone="Asia/Kolkata"
 )  
-
+        signer = Signer()
+        encrypted_api_key = signer.sign(raw_api_key)
         # Create Participants
         for participant_email in participant_emails:
-
             participant_user, _ = User.objects.get_or_create(
                 product=product,
                 email=participant_email,
@@ -205,65 +220,52 @@ class ScheduleMeetingView(APIView):
                 invitation_status="pending"
             )
 
-        # Encrypt API Key
-        signer = Signer()
-        encrypted_api_key = signer.sign(raw_api_key)
 
-        # Meeting Link
-        meeting_link = (
-            f"{settings.FRONTEND_URL}/"
-            f"{meeting.meeting_code}/"
-            f"{encrypted_api_key}/"
-            f"{meeting.id}"
-        )
+        # Canonical frontend-relative meeting path
+        meeting_path = build_meeting_path(meeting)
 
-        # Send Email Invitations
+        # Full meeting link used in emails
+        meeting_link = f"{settings.FRONTEND_URL}{meeting_path}"
+
         # Send Email Invitations (Clean Format)
         if participant_emails:
             subject = f"Meeting Invitation: {title}"
             message = f"""
 You have been invited to a meeting.
 
-TITLE
-{title}
+TITLE: {title}
 
-DESCRIPTION
-{description if description else "No description provided"}
+DESCRIPTION: {description if description else "No description provided"}
 
-DATE
-{scheduled_dt.strftime('%d %B %Y') if scheduled_dt else "N/A"}
+DATE: {scheduled_dt.strftime('%d %B %Y')}
 
-TIME
-{scheduled_dt.strftime('%I:%M %p') if scheduled_dt else "N/A"}
+TIME: {scheduled_dt.strftime('%I:%M %p')}
 
-MEETING LINK
-{meeting_link}
+MEETING LINK: {meeting_link}
 
+Please join the meeting at the scheduled time.
 
-Please join the meeting at the scheduled time using the link above.
-
-Regards,  
+Regards,
 Meeting Team
 """
 
-        send_mail(
+            send_mail(
         subject=subject,
         message=message,
         from_email=settings.DEFAULT_FROM_EMAIL,
         recipient_list=participant_emails,
-        fail_silently=False,
-    )
-
+        fail_silently=False,)
+            
         return Response(
             {
-                "message": "Meeting scheduled successfully",
-                "meeting_id": str(meeting.id),
-                "meeting_code": meeting.meeting_code,
-                "meeting_link": meeting_link,
-                "encrypted_api_key": encrypted_api_key,
-            },
-            status=status.HTTP_201_CREATED,
-        )
+                 "message": "Meeting scheduled successfully",
+                 "meeting_id": str(meeting.id),
+                 "meeting_code": meeting.meeting_code,
+                 "meeting_link": meeting_link,
+                 "meeting_path": meeting_path,
+             },
+             status=status.HTTP_201_CREATED,
+         )
     
 
 class ListMeetingsView(APIView):
@@ -272,19 +274,23 @@ class ListMeetingsView(APIView):
     def get(self, request):
         meetings = Meeting.objects.filter(status='scheduled').order_by('scheduled_start')
         data = []
+        signer = Signer()
+        raw_api_key = request.headers.get("X-Api-Key")
+        encrypted_api_key = None
         for meeting in meetings:
             participants = []
             for participant in getattr(meeting, 'participants', []).all() if hasattr(meeting, 'participants') else []:
                 if participant.user:
                     participants.append(participant.user.email)
 
+            meeting_path = build_meeting_path(meeting)
             data.append({
-                'id': str(meeting.id),
-                'title': meeting.title,
-                'datetime': meeting.scheduled_start.isoformat() if meeting.scheduled_start else None,
-                'participants': participants,
-                'link': f'/meeting/{meeting.meeting_code}/',
-            })
+        'id': str(meeting.id),
+        'title': meeting.title,
+        'datetime': meeting.scheduled_start.isoformat() if meeting.scheduled_start else None,
+        'participants': participants,
+        'link': meeting_path,
+        'meeting_code': meeting.meeting_code,})
 
         return Response(data, status=status.HTTP_200_OK)
 

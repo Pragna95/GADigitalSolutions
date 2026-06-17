@@ -33,14 +33,26 @@ function LoginAuth() {
                 const pendingMeetingStr = sessionStorage.getItem("pending_meeting");
                 if (pendingMeetingStr) {
                     sessionStorage.removeItem("pending_meeting");
+                    let pending = pendingMeetingStr;
                     try {
-                        const { company, api_key, meeting_id } = JSON.parse(pendingMeetingStr);
-                        // Redirect to the stored deep link
-                        navigate(`/${company}/${api_key}/${meeting_id}`);
-                        return;
+                        pending = JSON.parse(pendingMeetingStr);
                     } catch (e) {
-                        console.error("Error parsing pending_meeting from sessionStorage", e);
+                        // If pending_meeting is already a string, keep it as-is.
                     }
+
+                    if (typeof pending === "string") {
+                        const destination = pending.startsWith("/") ? pending : `/${pending}`;
+                        navigate(destination);
+                        return;
+                    }
+
+                    const { company, api_key, meeting_id } = pending;
+                    if (api_key) {
+                        navigate(`/${company}/${api_key}/${meeting_id}`);
+                    } else {
+                        navigate(`/lobby/${meeting_id}`);
+                    }
+                    return;
                 }
                 
                 navigate("/dashboard");
