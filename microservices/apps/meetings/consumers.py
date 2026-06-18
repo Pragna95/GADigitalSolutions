@@ -20,6 +20,8 @@ def get_room(room_name):
     return ROOMS[room_name]
 
 
+ACTIVE_MEETINGS = set()
+
 class MeetingConsumer(AsyncJsonWebsocketConsumer):
 
     async def connect(self):
@@ -37,6 +39,14 @@ class MeetingConsumer(AsyncJsonWebsocketConsumer):
         # NOTE: this group is ONLY for MeetingConsumer (audio/WebRTC signaling) instances.
         self.room_group_name = f"meeting_{self.meeting_uuid}"
 
+        global ACTIVE_MEETINGS
+        if self.meeting_uuid not in ACTIVE_MEETINGS:
+            ACTIVE_MEETINGS.add(self.meeting_uuid)
+            from django.core.cache import cache
+            cache.delete(f"meeting_{self.meeting_uuid}_participants")
+            cache.delete(f"meeting:{self.meeting_uuid}:raised_hands")
+            cache.delete(f"hands_{self.meeting_uuid}_set")
+
         await self.channel_layer.group_add(
             self.room_group_name,
             self.channel_name,
@@ -49,6 +59,7 @@ class MeetingConsumer(AsyncJsonWebsocketConsumer):
             await sync_to_async(remove_participant_from_cache)(self.meeting_uuid, self.user_id)
             from django.core.cache import cache
             set_key = f"hands_{self.meeting_uuid}_set"
+            set_key = f"meeting:{self.meeting_uuid}:raised_hands"
             raised_set = cache.get(set_key) or set()
             raised_set.discard(self.user_id)
             cache.set(set_key, raised_set, timeout=None)
@@ -82,6 +93,7 @@ class MeetingConsumer(AsyncJsonWebsocketConsumer):
             if user_id is not None and is_raised is not None:
                 from django.core.cache import cache
                 set_key = f"hands_{self.meeting_uuid}_set"
+                set_key = f"meeting:{self.meeting_uuid}:raised_hands"
                 raised_set = cache.get(set_key) or set()
                 if is_raised:
                     raised_set.add(user_id)
@@ -175,6 +187,9 @@ class ParticipantConsumer(AsyncJsonWebsocketConsumer):
                 self.channel_name
             )
             await self.accept()
+            from django.core.cache import cache
+            current_count = len(cache.get(f"meeting:{self.meeting_uuid}:raised_hands") or set())
+            await self.send_json({"type": "hand_count_init", "count": current_count})
         except Exception:
             traceback.print_exc()
 
