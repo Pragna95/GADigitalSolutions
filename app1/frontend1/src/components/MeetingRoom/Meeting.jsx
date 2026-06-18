@@ -89,6 +89,10 @@ const Meeting = () => {
 
     const [remoteStreams, setRemoteStreams] = useState([]);
     const [roomPeers, setRoomPeers] = useState({});
+    useEffect(() => {
+    console.log("ROOM PEERS:", roomPeers);
+    console.log("REMOTE STREAMS:", remoteStreams);
+}, [roomPeers, remoteStreams]);
     const [localPeerId] = useState(() => `peer-${Math.random().toString(36).slice(2, 10)}`);
     const [isWebRtcReady, setIsWebRtcReady] = useState(false);
 
@@ -119,19 +123,24 @@ const Meeting = () => {
         });
     };
 
-    const removePeer = (peerId) => {
+    // 🔥 FIX 1: Only delete the box if they actually left the meeting
+    const removePeer = (peerId, isFullLeave = false) => {
         const pc = pcRefs.current[peerId];
         if (pc) {
             pc.close();
             delete pcRefs.current[peerId];
         }
         delete pendingIceCandidatesRef.current[peerId];
+        
         setRemoteStreams((prev) => prev.filter((item) => item.peerId !== peerId));
-        setRoomPeers((prev) => {
-            const next = { ...prev };
-            delete next[peerId];
-            return next;
-        });
+
+        if (isFullLeave) {
+            setRoomPeers((prev) => {
+                const next = { ...prev };
+                delete next[peerId];
+                return next;
+            });
+        }
     };
 
     const sendSignal = (payload) => {
@@ -144,6 +153,7 @@ const Meeting = () => {
             JSON.stringify({
                 sender: localPeerId,
                 meeting_id: meetingId,
+                name: participantName, // Crucial for instant box rendering
                 ...payload,
             }),
         );
@@ -178,13 +188,14 @@ const Meeting = () => {
             }
         };
 
+        // 🔥 FIX 2: If connection drops, keep the box, just drop the video!
         pc.onconnectionstatechange = () => {
             if (
                 pc.connectionState === "failed" ||
                 pc.connectionState === "disconnected" ||
                 pc.connectionState === "closed"
             ) {
-                removePeer(remotePeerId);
+                removePeer(remotePeerId, false); // false = keep them in the grid!
             }
         };
 
@@ -232,26 +243,28 @@ const Meeting = () => {
     };
 
     const handleSignalMessage = async (message) => {
-        if (!message || message.sender === localPeerId) {
-            return;
-        }
+        // 🔥 FIX 1: Ignore server broadcast messages that don't have a sender!
+        if (!message || !message.sender || message.sender === localPeerId) return;
 
-        const { type, sender, target } = message;
-        if (target && target !== localPeerId) {
-            return;
-        }
+        const { type, sender, target, name } = message;
+        if (target && target !== localPeerId) return;
+
+        // INSTANTLY add anyone we hear from to the visual grid
+        setRoomPeers((prev) => {
+            if (!prev[sender]) {
+                return { ...prev, [sender]: { name: name || `Guest ${sender.slice(-4)}` } };
+            }
+            return prev;
+        });
 
         switch (type) {
             case "join": {
-                setRoomPeers((prev) => ({
-                    ...prev,
-                    [sender]: {
-                        name: message.name || `Guest ${sender.slice(-4)}`,
-                    },
-                }));
-                if (localPeerId < sender) {
-                    await createPeerConnection(sender, true);
-                }
+                sendSignal({ type: "peer_hello", target: sender });
+                if (localPeerId < sender) await createPeerConnection(sender, true);
+                break;
+            }
+            case "peer_hello": {
+                if (localPeerId < sender) await createPeerConnection(sender, true);
                 break;
             }
             case "offer": {
@@ -260,19 +273,13 @@ const Meeting = () => {
             }
             case "answer": {
                 const pc = pcRefs.current[sender];
-                if (pc) {
-                    await pc.setRemoteDescription({ type: message.sdpType, sdp: message.sdp });
-                }
+                if (pc) await pc.setRemoteDescription({ type: message.sdpType, sdp: message.sdp });
                 break;
             }
             case "ice": {
                 const pc = pcRefs.current[sender];
                 if (pc && message.candidate) {
-                    try {
-                        await pc.addIceCandidate(message.candidate);
-                    } catch (error) {
-                        console.warn("Failed to add ICE candidate", error);
-                    }
+                    try { await pc.addIceCandidate(message.candidate); } catch (err) { console.warn("ICE error", err); }
                 } else if (message.candidate) {
                     pendingIceCandidatesRef.current[sender] = [
                         ...(pendingIceCandidatesRef.current[sender] || []),
@@ -282,14 +289,14 @@ const Meeting = () => {
                 break;
             }
             case "leave": {
-                removePeer(sender);
+                removePeer(sender, true);
                 break;
             }
             default:
                 break;
         }
     };
-
+    
     // setup getUserMedia
     useEffect(() => {
         const setupMedia = async () => {
@@ -421,11 +428,13 @@ const Meeting = () => {
                 const data = msg;
 
                 // 1. Maintain your existing Hand Raise Logic
-                if (data.type === "hand_count_init" || data.type === "hand_count_update") {
-                    const el = document.getElementById('hand-count');
-                    if (el) el.innerText = data.count;
-                    return;
-                }
+                if (
+    data.type === "hand_count_init" ||
+    data.type === "hand_count_update"
+) {
+    setLiveHandRaiseCount(data.count || 0);
+    return;
+}
                 if (data.type === "hand_raise") {
                     setHandRaisedUsers((prev) => {
                         const next = { ...prev };
@@ -459,8 +468,8 @@ const Meeting = () => {
 
                 // 🔥 CRITICAL FIX 2: Listen for the dynamic participant grid list!
                 if (msg.type === "participant_list") {
-                    console.log("Live Grid Update from Backend:", msg.participants);
-                    
+                    // console.log("Live Grid Update from Backend:", msg.participants);
+                    console.log("PARTICIPANT LIST RECEIVED", msg.participants);
                     setRoomPeers((prevPeers) => {
                         const next = { ...prevPeers };
                         
