@@ -1,0 +1,7 @@
+{
+  "name": "app1",
+  "private": true,
+  "workspaces": [
+    "frontend1"
+  ]
+}

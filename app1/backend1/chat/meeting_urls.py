@@ -7,8 +7,10 @@ from .meeting_views import (
     StopScreenShareView,
     CurrentScreenSharerView
 )
+from .views import MeetingListView
 
 urlpatterns = [
+    path('', MeetingListView.as_view(), name='meeting_list'),
     path('participants/<str:meeting_id>/', MeetingParticipantsView.as_view(), name='meeting_participants'),
     path('participant/<str:meeting_id>/<str:user_id>/', MeetingParticipantDetailView.as_view(), name='meeting_participant_detail'),
     path('participant/update/', MeetingParticipantUpdateView.as_view(), name='meeting_participant_update'),
@@ -16,3 +18,4 @@ urlpatterns = [
     path('stop-screen-share/', StopScreenShareView.as_view(), name='stop_screen_share'),
     path('current-screen-sharer/<str:meeting_link>/', CurrentScreenSharerView.as_view(), name='current_screen_sharer'),
 ]
+

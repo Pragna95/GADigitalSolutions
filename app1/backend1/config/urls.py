@@ -23,5 +23,6 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/auth/', include('authentication.urls')),
     path('api/chat/', include('chat.urls')),
+    path('api/meeting/', include('chat.meeting_singular_urls')),
     path('api/meetings/', include('chat.meeting_urls')),
 ]

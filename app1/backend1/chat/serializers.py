@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import ChatRoom, ChatMessage
+from .models import ChatRoom, ChatMessage, Meeting
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -35,3 +35,20 @@ class ChatRoomSerializer(serializers.ModelSerializer):
                 'timestamp': last_msg.timestamp
             }
         return None
+
+class MeetingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Meeting
+        fields = [
+            'id',
+            'meeting_code',
+            'title',
+            'description',
+            'datetime',
+            'created_by_email',
+            'created_by_name',
+            'participants',
+            'created_at'
+        ]
+        read_only_fields = ['id', 'meeting_code', 'created_at']
+
