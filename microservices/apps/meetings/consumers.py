@@ -24,6 +24,7 @@ class MeetingConsumer(AsyncJsonWebsocketConsumer):
             self.channel_name,
         )
         await self.accept()
+        await self.send_json({"type": "hand_count_init", "count": 0})
 
     async def disconnect(self, close_code):
         if hasattr(self, "user_id") and self.user_id != "pending_user":
@@ -51,8 +52,19 @@ class MeetingConsumer(AsyncJsonWebsocketConsumer):
         elif message_type == "hand_raise":
             is_raised = content.get("is_raised")
             if user_id is not None and is_raised is not None:
-                # DB save avasaram lekapothe just pass
-                pass
+                from django.core.cache import cache
+                set_key = f"hands_{self.meeting_uuid}_set"
+                raised_set = cache.get(set_key) or set()
+                if is_raised:
+                    raised_set.add(user_id)
+                else:
+                    raised_set.discard(user_id)
+                cache.set(set_key, raised_set, timeout=None)
+                current_count = len(raised_set)
+                await self.channel_layer.group_send(
+                    self.room_group_name,
+                    {"type": "hand_count_broadcast", "count": current_count},
+                )
 
         message = content.copy()
         message["sender_channel_name"] = self.channel_name
@@ -67,7 +79,8 @@ class MeetingConsumer(AsyncJsonWebsocketConsumer):
 
     async def signal_message(self, event):
         message = event["message"]
-        if message.get("sender_channel_name") == self.channel_name:
+        msg_type = message.get("type")
+        if msg_type != "hand_raise" and message.get("sender_channel_name") == self.channel_name:
             return
 
         message.pop("sender_channel_name", None)
@@ -79,6 +92,9 @@ class MeetingConsumer(AsyncJsonWebsocketConsumer):
     async def count_update(self, event):
         """Forward countUpdate broadcast to this WebSocket client."""
         await self.send_json(event["data"])
+
+    async def hand_count_broadcast(self, event):
+        await self.send_json({"type": "hand_count_update", "count": event["count"]})
 
 class ParticipantConsumer(AsyncJsonWebsocketConsumer):
 
@@ -126,3 +142,9 @@ class ParticipantConsumer(AsyncJsonWebsocketConsumer):
     async def count_update(self, event):
         """Forward countUpdate broadcast to this WebSocket client."""
         await self.send_json(event["data"])
+
+    async def hand_count_broadcast(self, event):
+        await self.send_json({
+            "type": "hand_count_update",
+            "count": event["count"]
+        })
