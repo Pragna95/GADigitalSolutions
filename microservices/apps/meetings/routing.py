@@ -7,4 +7,6 @@ websocket_urlpatterns = [
         r"^ws/participants/(?P<meeting_id>[\w-]+)/$",
         consumers.ParticipantConsumer.as_asgi(),
     ),
+    re_path(r"^ws/chat/(?P<meeting_id>[\w-]+)/$",consumers.ChatConsumer.as_asgi(),
+),
 ]

@@ -440,3 +440,4 @@ def get_all_participants(request, meeting_id):
         for p in participants
     ]
     return JsonResponse({"data": data})
+

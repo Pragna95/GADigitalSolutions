@@ -2,6 +2,7 @@ import traceback
 from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from .services import update_audio_state, add_participant_to_cache, remove_participant_from_cache
+from .models import ChatMessage, Meeting, User
 
 class MeetingConsumer(AsyncJsonWebsocketConsumer):
 
@@ -148,3 +149,56 @@ class ParticipantConsumer(AsyncJsonWebsocketConsumer):
             "type": "hand_count_update",
             "count": event["count"]
         })
+        
+from channels.generic.websocket import AsyncJsonWebsocketConsumer
+@sync_to_async
+def save_chat_message(meeting_id, user_id, message):
+
+    meeting = Meeting.objects.get(meeting_code=meeting_id)
+    user = User.objects.get(id=user_id)
+
+    return ChatMessage.objects.create(
+        meeting=meeting,
+        user=user,
+        message=message,
+    )
+class ChatConsumer(AsyncJsonWebsocketConsumer):
+
+    async def connect(self):
+        self.meeting_id = self.scope["url_route"]["kwargs"]["meeting_id"]
+        self.room_group_name = f"chat_{self.meeting_id}"
+
+        await self.channel_layer.group_add(
+            self.room_group_name,
+            self.channel_name
+        )
+
+        await self.accept()
+
+    async def disconnect(self, close_code):
+        await self.channel_layer.group_discard(
+            self.room_group_name,
+            self.channel_name
+        )
+
+    async def receive_json(self, content):
+        user_id = content.get("user_id")
+        message = content.get("message")
+
+        if user_id and message:
+         await save_chat_message(
+          self.meeting_id,
+          user_id,
+          message
+       )
+     
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                "type": "chat_message",
+                "message": content
+            }
+        )
+
+    async def chat_message(self, event):
+        await self.send_json(event["message"])
