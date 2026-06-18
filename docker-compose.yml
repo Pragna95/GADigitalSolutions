@@ -78,23 +78,23 @@ services:
   # ----------------------------------------------------
   # BACKEND2 (APP2 AUTHENTICATION SERVICE)
   # ----------------------------------------------------
-  backend2:
-    build:
-      context: ./app2/backend2
-      dockerfile: Dockerfile
-    container_name: auth-backend2
-    env_file:
-      - .env
-    ports:
-      - "8003:8003"
-    depends_on:
-      postgres-db:
-        condition: service_healthy
-    command: >
-      sh -c "
-      python manage.py migrate &&
-      python manage.py runserver 0.0.0.0:8003
-      "
+  #backend2:
+    #build:
+      #context: ./app2/backend2
+      #dockerfile: Dockerfile
+    #container_name: auth-backend2
+    #env_file:
+      #- .env
+    #ports:
+      #- "8003:8003"
+    #depends_on:
+      #postgres-db:
+       # condition: service_healthy
+    #command: >
+      #sh -c "
+      #python manage.py migrate &&
+      #python manage.py runserver 0.0.0.0:8003
+     # "
 
   # ----------------------------------------------------
   # APP1 (REACT HUDDLE APPLICATION 1)
@@ -110,16 +110,4 @@ services:
       - backend1
       - microservice
 
-  # ----------------------------------------------------
-  # APP2 (REACT HUDDLE APPLICATION 2)
-  # ----------------------------------------------------
-  app2:
-    build:
-      context: ./app2/frontend2
-      dockerfile: Dockerfile
-    container_name: react-app2
-    ports:
-      - "3001:3001"
-    depends_on:
-      - backend2
-      - microservice
+ 

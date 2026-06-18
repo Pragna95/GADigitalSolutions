@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django_extensions',
 
     'rest_framework',
     'django_filters',
@@ -131,6 +132,7 @@ REST_FRAMEWORK = {
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
+        
         "CONFIG": {
             "hosts": [(os.getenv("REDIS_HOST", "localhost"), int(os.getenv("REDIS_PORT", "6379")))],
         },
@@ -168,4 +170,9 @@ CACHES = {
         "LOCATION": "redis://127.0.0.1:6379/1",
     }
 }
+
+# LiveKit Server Settings
+LIVEKIT_URL = os.getenv("LIVEKIT_URL", "http://localhost:7880")
+LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY", "devkey")
+LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET", "secret")
 

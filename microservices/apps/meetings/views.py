@@ -155,9 +155,13 @@ def toggle_mic(request):
         mic_on = data.get("mic_on")
         username = data.get("username", f"User_{user_id}")
 
+        meeting = get_meeting_by_identifier(meeting_id)
+        if not meeting:
+            return JsonResponse({"error": "Meeting not found"}, status=404)
+
         participant, created = ParticipantState.objects.get_or_create(
             user_id=user_id,
-            meeting_id=meeting_id,
+            meeting=meeting,
             defaults={"username": username}
         )
 
@@ -167,7 +171,7 @@ def toggle_mic(request):
         # Broadcast update over WebSockets
         channel_layer = get_channel_layer()
         async_to_sync(channel_layer.group_send)(
-            f"meeting_{meeting_id}",
+            f"meeting_{meeting.id}",
             {
                 "type": "participant_update",
                 "data": {
@@ -368,25 +372,32 @@ def update_participant(request):
         video_on = data.get("video_on")
         hand_raised = data.get("hand_raised")
 
+        meeting = get_meeting_by_identifier(meeting_id)
+        if not meeting:
+            return JsonResponse({"error": "Meeting not found"}, status=404)
+
         # Fixed: Query on user_id, default username if newly created
         participant, created = ParticipantState.objects.get_or_create(
             user_id=user_id,
-            meeting_id=meeting_id,
+            meeting=meeting,
             defaults={"username": username}
         )
 
         if username and not created:
             participant.username = username
 
-        participant.mic_on = mic_on
-        participant.video_on = video_on   
-        participant.hand_raised = hand_raised
+        if mic_on is not None:
+            participant.mic_on = bool(mic_on)
+        if video_on is not None:
+            participant.video_on = bool(video_on)   
+        if hand_raised is not None:
+            participant.hand_raised = bool(hand_raised)
         participant.save()
 
         # Broadcast update to websocket layer
         channel_layer = get_channel_layer()
         async_to_sync(channel_layer.group_send)(
-            f"meeting_{meeting_id}",
+            f"meeting_{meeting.id}",
             {
                 "type": "participant_update",
                 "data": {
@@ -429,3 +440,4 @@ def get_all_participants(request, meeting_id):
         for p in participants
     ]
     return JsonResponse({"data": data})
+
