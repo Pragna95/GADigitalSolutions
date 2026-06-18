@@ -163,7 +163,7 @@ const VideoStage = ({
                         </button>
 
                         {/* HAND RAISE OVERLAY */}
-                        {handRaiseCount > 0 && (
+                        {true && (
                             <div className="flex items-center gap-2 animate-fade-in">
                                 <button
                                     onClick={() => {
@@ -174,7 +174,7 @@ const VideoStage = ({
                                     className="bg-white hover:bg-yellow-50 h-[38px] px-4 rounded-[22px] flex items-center justify-center shadow-lg border border-yellow-200 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer gap-2"
                                 >
                                     <span className="text-[18px] leading-none">✋</span>
-                                    <span className="text-[15px] font-bold leading-none text-slate-800"
+                                    <span id="hand-count" className="text-[15px] font-bold leading-none text-slate-800"
                                         style={{
                                             display: "inline-flex",
                                             alignItems: "center",
@@ -189,7 +189,7 @@ const VideoStage = ({
                                             boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
                                         }}
                                     >
-                                        {handRaiseCount}
+                                        0
                                     </span>
                                 </button>
 

@@ -412,7 +412,34 @@ const Meeting = () => {
         pWs.onmessage = (event) => {
             try {
                 const msg = JSON.parse(event.data);
-                if (msg.event === "countUpdate" && typeof msg.count === "number") {
+                const data = msg;
+                if (data.type === "hand_count_init" || data.type === "hand_count_update") {
+                    document.getElementById('hand-count').innerText = data.count;
+                    return;
+                }
+                if (data.type === "hand_raise") {
+                    // toggle hand icon for data.user_id
+                    setHandRaisedUsers((prev) => {
+                        const next = { ...prev };
+                        if (data.is_raised) {
+                            const name = data.user_name || `Guest ${data.user_id.slice(-4)}`;
+                            next[data.user_id] = name;
+                            if (data.user_id !== userId) {
+                                showHandRaiseGhost(data.user_id, name);
+                            }
+                        } else {
+                            delete next[data.user_id];
+                            setHandRaiseNotifications((prev) =>
+                                prev.filter((n) => n.uid !== data.user_id)
+                            );
+                            if (handRaiseTimers.current[data.user_id]) {
+                                clearTimeout(handRaiseTimers.current[data.user_id]);
+                                delete handRaiseTimers.current[data.user_id];
+                            }
+                        }
+                        return next;
+                    });
+                } else if (msg.event === "countUpdate" && typeof msg.count === "number") {
                     // Server-authoritative hand-raise count — syncs badge for ALL browsers
                     setLiveHandRaiseCount(msg.count);
                 } else if (msg.event === "state_changed" && msg.user_id && msg.user_id !== userId) {
@@ -606,6 +633,16 @@ const Meeting = () => {
             // (including this one) receives the same authoritative value.
             return next;
         });
+
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({
+                type: "hand_raise",
+                user_id: userId,
+                user_name: displayName,
+                is_raised: newHand
+            }));
+        }
+
         updateParticipantState(isMicOn, isVideoOn, newHand);
     };
 
