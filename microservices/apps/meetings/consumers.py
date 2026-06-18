@@ -30,6 +30,16 @@ class MeetingConsumer(AsyncJsonWebsocketConsumer):
     async def disconnect(self, close_code):
         if hasattr(self, "user_id") and self.user_id != "pending_user":
             await sync_to_async(remove_participant_from_cache)(self.meeting_uuid, self.user_id)
+            from django.core.cache import cache
+            set_key = f"hands_{self.meeting_uuid}_set"
+            raised_set = cache.get(set_key) or set()
+            raised_set.discard(self.user_id)
+            cache.set(set_key, raised_set, timeout=None)
+            current_count = len(raised_set)
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {"type": "hand_count_broadcast", "count": current_count},
+            )
 
         await self.channel_layer.group_discard(
             self.room_group_name,
