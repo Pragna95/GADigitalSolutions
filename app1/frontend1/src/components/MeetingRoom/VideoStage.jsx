@@ -189,7 +189,7 @@ const VideoStage = ({
                                             boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
                                         }}
                                     >
-                                        0
+                                        {handRaiseCount}
                                     </span>
                                 </button>
 
