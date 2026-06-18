@@ -4,6 +4,7 @@ import {
   Routes,
   Route,
   Navigate,
+  useLocation,
 } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 
@@ -48,8 +49,18 @@ const NotFound = () => (
 ----------------------------- */
 const ProtectedRoute = ({ children }) => {
   const token = localStorage.getItem("token");
+  const location = useLocation();
 
-  return token ? children : <Navigate to="/login" replace />;
+  if (!token) {
+    sessionStorage.setItem(
+      "redirect_after_login",
+      location.pathname
+    );
+
+    return <Navigate to="/login" replace />;
+  }
+
+  return children;
 };
 
 /* -----------------------------
@@ -113,7 +124,7 @@ function App() {
           <Route path="/meeting" element={<Meeting />} />
 
           {/* New professional format */}
-          <Route
+          {/* <Route
             path="/:meetingCode/:apiKey/:meetingId"
             element={<MeetingLobby />}
           />
@@ -121,6 +132,23 @@ function App() {
           <Route
             path="/:meetingCode/:meetingId"
             element={<MeetingLobby />}
+          /> */}
+          <Route
+            path="/:meetingCode/:apiKey/:meetingId"
+            element={
+              <ProtectedRoute>
+                <MeetingLobby />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/:meetingCode/:meetingId"
+            element={
+              <ProtectedRoute>
+                <MeetingLobby />
+              </ProtectedRoute>
+            }
           />
 
           {/* Legacy links */}

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
-import api,{microserviceApi} from "../../services/api";
+import api, { microserviceApi } from "../../services/api";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,6 +48,24 @@ export default function AdvanceSchedule({
     const [newEmail, setNewEmail] = useState("");
     const [attendeeError, setAttendeeError] = useState("");
     const [errors, setErrors] = useState({});
+    // 🔥 STEP 1: Time helpers
+    const now = new Date();
+    const currentTime = now.toTimeString().slice(0, 5); // HH:MM
+
+
+    const isTodaySelected = () => {
+        if (!startDate) return false;
+
+        const today = new Date();
+
+        const selected = new Date(startDate);
+
+        return (
+            today.getFullYear() === selected.getFullYear() &&
+            today.getMonth() === selected.getMonth() &&
+            today.getDate() === selected.getDate()
+        );
+    };
 
     useEffect(() => {
         const fetchUsers = async () => {
@@ -111,25 +129,80 @@ export default function AdvanceSchedule({
     };
 
     const handleScheduleMeeting = async () => {
-        // Validate inputs
         const newErrors = {};
+
+        // TITLE
         if (!title.trim()) {
             newErrors.title = "Meeting title is required";
         }
-        if (!startDate) {
+
+        // DATE CHECK
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const selectedDate = startDate ? new Date(startDate) : null;
+
+        if (!selectedDate) {
             newErrors.startDate = "Start date is required";
+        } else {
+            selectedDate.setHours(0, 0, 0, 0);
+
+            if (selectedDate < today) {
+                newErrors.startDate = "Past dates are not allowed";
+            }
+
+            // TIME LOGIC
+            const now = new Date();
+            const currentTime = now.toTimeString().slice(0, 5);
+
+            const start = new Date(`1970-01-01T${startTime}`);
+            const end = new Date(`1970-01-01T${endTime}`);
+            const current = new Date(`1970-01-01T${currentTime}`);
+
+            const isToday =
+                selectedDate.getTime() === today.getTime();
+
+            if (isToday) {
+                if (start < current) {
+                    newErrors.startTime =
+                        "Start time cannot be in the past";
+                    toast.error("Start time is in the past");
+                }
+
+                if (end < current) {
+                    newErrors.endTime =
+                        "End time cannot be in the past";
+
+                }
+            }
+
+            // GLOBAL RULE
+            
+            if (start >= end) {
+                newErrors.endTime =
+                    "End time must be greater than start time";
+
+            }
         }
+
+        // TIME REQUIRED CHECK
         if (!startTime) {
             newErrors.startTime = "Start time is required";
         }
+
         if (!endTime) {
             newErrors.endTime = "End time is required";
-        } else if (startTime && endTime <= startTime) {
-            newErrors.endTime = "End time must be after start time";
         }
+
+
 
         if (Object.keys(newErrors).length > 0) {
             setErrors(newErrors);
+            toast.error("Please fix the highlighted errors before scheduling");
+            return;
+        }
+        if (attendeesList.length === 0) {
+            toast.error("Please add at least one participant");
             return;
         }
         setErrors({});
@@ -138,7 +211,7 @@ export default function AdvanceSchedule({
             setLoading(true);
             const token = localStorage.getItem("token");
             const apiKey = import.meta.env.VITE_X_API_KEY || localStorage.getItem("api_key") || "";
-            
+
             let userEmail = localStorage.getItem("email") || "host@example.com";
             let userName = localStorage.getItem("name") || "Host User";
 
@@ -147,7 +220,7 @@ export default function AdvanceSchedule({
                 try {
                     const base64Url = token.split('.')[1];
                     const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-                    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+                    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function (c) {
                         return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
                     }).join(''));
                     const decoded = JSON.parse(jsonPayload);
@@ -186,12 +259,12 @@ export default function AdvanceSchedule({
 
             if (response.status === 201) {
                 // Construct URL: frontend_url/{meeting_code}/{encrypted_api_key}/{meeting_id}
-                const fullLink = `${window.location.origin}/${data.meeting_code}/${data.encrypted_api_key}/${data.meeting_id}`;
-                
+                const fullLink = `${window.location.origin}/${data.meeting_code}/${data.meeting_id}`;
+
                 toast.success(`Meeting scheduled! Link copied to clipboard.`);
                 try {
                     await navigator.clipboard.writeText(fullLink);
-                } catch (_) {}
+                } catch (_) { }
 
                 onAddSession({
                     title,
@@ -534,6 +607,11 @@ h-[795.19px]
                                             selected={startDate}
                                             onSelect={setStartDate}
                                             initialFocus
+                                            disabled={(date) => {
+                                                const today = new Date();
+                                                today.setHours(0, 0, 0, 0); // normalize time
+                                                return date < today; // disable past dates
+                                            }}
                                         />
                                     </PopoverContent>
                                 </Popover>
@@ -579,10 +657,9 @@ h-[795.19px]
                                     <Input
                                         type="time"
                                         value={startTime}
-                                        onChange={(e) =>
-                                            setStartTime(e.target.value)
-                                        }
+                                        onChange={(e) => setStartTime(e.target.value)}
                                         disabled={allDay}
+                                        min={isTodaySelected() ? currentTime : undefined}
                                         className="
                       h-12
 
@@ -629,8 +706,13 @@ h-[795.19px]
                                         <Input
                                             type="time"
                                             value={endTime}
-                                            onChange={(e) =>
-                                                setEndTime(e.target.value)
+                                            onChange={(e) => setEndTime(e.target.value)}
+                                            min={
+                                                isTodaySelected()
+                                                    ? startTime > currentTime
+                                                        ? startTime
+                                                        : currentTime
+                                                    : undefined
                                             }
                                             className="
                         h-12
@@ -762,11 +844,10 @@ h-[795.19px]
 
                             transition-all
 
-                            ${
-                                selectedDays.includes(i)
-                                    ? "bg-[#0b2a7a] text-white"
-                                    : "bg-white border border-gray-300 text-gray-500"
-                            }
+                            ${selectedDays.includes(i)
+                                                            ? "bg-[#0b2a7a] text-white"
+                                                            : "bg-white border border-gray-300 text-gray-500"
+                                                        }
                           `}
                                                 >
                                                     {day}

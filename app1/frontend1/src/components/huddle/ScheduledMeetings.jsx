@@ -11,7 +11,7 @@ import toast from "react-hot-toast";
 import { Copy, Calendar, Users, RefreshCw } from "lucide-react";
 import api, { microserviceApi } from "../../services/api";
 import { useNavigate } from "react-router-dom";
-
+import dayjs from "dayjs";
 export default function ScheduledMeetings({ refreshTrigger }) {
   const [meetings, setMeetings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -35,7 +35,11 @@ export default function ScheduledMeetings({ refreshTrigger }) {
       const response = await microserviceApi.get("/api/meetings/", {
         headers,
       });
-      setMeetings(response.data);
+      // sort by latest date first
+      const sortedMeetings = [...response.data].sort((a, b) => {
+        return new Date(a.datetime) - new Date(b.datetime);
+      });
+      setMeetings(sortedMeetings);
     } catch (err) {
       console.error(err);
       setError("Failed to load scheduled meetings.");
@@ -77,19 +81,19 @@ export default function ScheduledMeetings({ refreshTrigger }) {
   const navigate = useNavigate();
 
   const handleOpenMeeting = (meeting) => {
-  if (!meeting) return;
+    if (!meeting) return;
 
-  const path = `/${meeting.meeting_code}/${meeting.id}`;
+    const path = `/${meeting.meeting_code}/${meeting.id}`;
 
-  const token = localStorage.getItem("token");
+    const token = localStorage.getItem("token");
 
-  if (token && token !== "null" && token !== "undefined") {
-    navigate(path);
-  } else {
-    sessionStorage.setItem("pending_meeting", path);
-    navigate("/login");
-  }
-};
+    if (token && token !== "null" && token !== "undefined") {
+      navigate(path);
+    } else {
+      sessionStorage.setItem("pending_meeting", path);
+      navigate("/login");
+    }
+  };
 
   if (loading) {
     return (
@@ -115,7 +119,7 @@ export default function ScheduledMeetings({ refreshTrigger }) {
           No scheduled meetings found.
         </p>
       ) : (
-        <div className="grid gap-3">
+        <div className="grid gap-3 max-h-[400px] overflow-y-auto pr-2">
           {meetings.map((meeting) => (
             <div
               key={meeting.id}

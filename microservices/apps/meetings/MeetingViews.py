@@ -65,15 +65,20 @@ class ValidateMeetingView(APIView):
                 {"error": "Meeting not found"},
                 status=status.HTTP_404_NOT_FOUND
             )
+        participants = [
+            p.user.email
+            for p in meeting.participants.select_related("user").all()]
+
+        company_name = meeting.product.name if meeting.product else "Unknown"
 
         return Response({
-            "title": meeting.title,
-            "datetime": str(meeting.scheduled_start),
-            "company_name": company if company else "Unknown",
-            "participants": [],
-            "meeting_code": meeting.meeting_code,
-        }, status=status.HTTP_200_OK)
-
+    "id": str(meeting.id),
+    "title": meeting.title,
+    "description": meeting.description,
+    "datetime": meeting.scheduled_start,
+    "created_by": str(meeting.created_by_user_id),
+    "created_by_email": meeting.created_by_user.email,
+})
 
 from uuid import UUID
 

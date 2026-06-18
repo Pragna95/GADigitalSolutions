@@ -16,7 +16,7 @@ import {
 import { microserviceApi } from "@/services/api";
 import placeholderImg from "../assets/placeholder.png";
 export default function MeetingLobby() {
-    const {company,api_key,meeting_id,meetingCode,meetingId,} = useParams();
+    const { company, api_key, meeting_id, meetingCode, meetingId, } = useParams();
     const actualMeetingId = meeting_id || meetingId;
     const actualMeetingCode = meetingCode;
     const navigate = useNavigate();
@@ -63,7 +63,7 @@ export default function MeetingLobby() {
                 streamRef.current.getAudioTracks().forEach((track) => {
                     track.enabled = micOn;
                 });
-                
+
                 if (videoOn) {
                     const videoTracks = streamRef.current.getVideoTracks();
                     // If there are no active video tracks, request a new one
@@ -101,9 +101,12 @@ export default function MeetingLobby() {
     }, [videoOn, micOn]);
 
     // Check if current user is logged in as a host (legacy React auth)
-    const hostToken = localStorage.getItem("token");
-    const hostCompany = localStorage.getItem("company");
-    const isHost = !!hostToken;
+    const currentUserId = localStorage.getItem("user_id");
+
+    const loggedInName =
+        localStorage.getItem("name") ||
+        localStorage.getItem("username") ||
+        "User";
 
     // Check if user has passed through microservice authentication
     const isMicroserviceAuth =
@@ -132,9 +135,20 @@ export default function MeetingLobby() {
                     response = await microserviceApi.get(
                         `/api/meeting/validate-lobby/${actualMeetingId}/`,
                     );
-                    
+
                 }
+                console.log(JSON.stringify(response.data, null, 2));
+                console.log("Meeting creator:", response.data.created_by);
+                console.log(
+                    "Logged in user:",
+                    localStorage.getItem("user_id")
+                );
                 setMeetingDetails(response.data);
+                console.log(JSON.stringify(response.data, null, 2));
+                console.log(
+                    "Logged User:",
+                    localStorage.getItem("user_id")
+                );
                 setIsValid(true);
             } catch (err) {
                 console.error(err);
@@ -145,16 +159,37 @@ export default function MeetingLobby() {
         };
         validateMeeting();
     }, [company, api_key, meeting_id]);
+    const loggedInEmail = localStorage.getItem("email");
+
+    const isLoggedIn = !!localStorage.getItem("token");
+
+    const isHost =
+        isLoggedIn &&
+        meetingDetails &&
+        meetingDetails.created_by_email?.toLowerCase() ===
+        loggedInEmail?.toLowerCase();
+
+    const isUser = isLoggedIn && !isHost;
 
     const handleJoin = (e) => {
         e.preventDefault();
-        const finalName = isHost ? hostCompany || "Host" : name.trim();
+
+        const finalName = isLoggedIn
+            ? loggedInName
+            : name.trim();
+
         if (!finalName) {
             alert("Please enter your name to join the meeting.");
             return;
         }
-        // Navigate to the dynamic meeting room using the meeting UUID so backend lookups stay consistent.
-        navigate(`/room/${actualMeetingId}?name=${encodeURIComponent(finalName)}`);
+
+        const role = isHost
+            ? "host"
+            : (isLoggedIn ? "user" : "guest");
+
+        navigate(
+            `/room/${actualMeetingId}?name=${encodeURIComponent(finalName)}&role=${role}`
+        );
     };
 
     if (loading) {
@@ -203,11 +238,11 @@ export default function MeetingLobby() {
     const meetingDate = meetingDetails?.datetime
         ? meetingDetails.datetime
         : new Date().toLocaleDateString(undefined, {
-              weekday: "long",
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-          });
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+        });
 
     return (
         <div className="min-h-screen bg-[#F8F9FB] flex flex-col overflow-hidden font-sans">
@@ -278,11 +313,10 @@ export default function MeetingLobby() {
                         <div className="absolute bottom-5 left-1/2 -translate-x-1/2 bg-black/40 backdrop-blur-md border border-white/10 rounded-[20px] p-2 flex items-center gap-3 shadow-2xl">
                             <button
                                 onClick={() => setMicOn(!micOn)}
-                                className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer ${
-                                    micOn
-                                        ? "bg-white/10 text-white hover:bg-white/20 border border-white/5"
-                                        : "bg-red-500 text-white shadow-[0_2px_8px_rgba(239,68,68,0.25)] hover:bg-red-650"
-                                }`}
+                                className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer ${micOn
+                                    ? "bg-white/10 text-white hover:bg-white/20 border border-white/5"
+                                    : "bg-red-500 text-white shadow-[0_2px_8px_rgba(239,68,68,0.25)] hover:bg-red-650"
+                                    }`}
                             >
                                 {micOn ? (
                                     <Mic size={18} />
@@ -293,11 +327,10 @@ export default function MeetingLobby() {
 
                             <button
                                 onClick={() => setVideoOn(!videoOn)}
-                                className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer ${
-                                    videoOn
-                                        ? "bg-white/10 text-white hover:bg-white/20 border border-white/5"
-                                        : "bg-red-500 text-white shadow-[0_2px_8px_rgba(239,68,68,0.25)] hover:bg-red-655"
-                                }`}
+                                className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer ${videoOn
+                                    ? "bg-white/10 text-white hover:bg-white/20 border border-white/5"
+                                    : "bg-red-500 text-white shadow-[0_2px_8px_rgba(239,68,68,0.25)] hover:bg-red-655"
+                                    }`}
                             >
                                 {videoOn ? (
                                     <Video size={18} />
@@ -353,14 +386,14 @@ export default function MeetingLobby() {
                                             ))}
                                         {(meetingDetails?.participants || [])
                                             .length > 4 && (
-                                            <div className="flex items-center justify-center h-8 w-8 rounded-full bg-slate-100 text-slate-500 ring-2 ring-white text-[11px] font-extrabold">
-                                                +
-                                                {(
-                                                    meetingDetails?.participants ||
-                                                    []
-                                                ).length - 4}
-                                            </div>
-                                        )}
+                                                <div className="flex items-center justify-center h-8 w-8 rounded-full bg-slate-100 text-slate-500 ring-2 ring-white text-[11px] font-extrabold">
+                                                    +
+                                                    {(
+                                                        meetingDetails?.participants ||
+                                                        []
+                                                    ).length - 4}
+                                                </div>
+                                            )}
                                     </div>
                                     <span className="text-xs text-slate-500 font-semibold truncate max-w-50 ml-1">
                                         {(meetingDetails?.participants || [])
@@ -377,37 +410,42 @@ export default function MeetingLobby() {
                                 onSubmit={handleJoin}
                                 className="space-y-4 pt-2"
                             >
-                                {!isHost ? (
+                                {!isLoggedIn ? (
                                     <div className="space-y-1.5 text-left">
-                                        <label
-                                            htmlFor="name-input"
-                                            className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider"
-                                        >
+
+                                        <label>
                                             Enter your name
                                         </label>
+
                                         <Input
-                                            id="name-input"
-                                            type="text"
-                                            required
-                                            placeholder="e.g. John Doe"
                                             value={name}
-                                            onChange={(e) =>
-                                                setName(e.target.value)
-                                            }
-                                            className="w-full border-slate-200 focus:border-indigo-400 rounded-xl h-11 text-sm outline-none px-3.5 focus:ring-4 focus:ring-indigo-50 transition-all duration-200"
+                                            onChange={(e) => setName(e.target.value)}
                                         />
+
                                     </div>
                                 ) : (
-                                    <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl text-left">
-                                        <p className="text-xs text-indigo-800 leading-relaxed font-medium">
+
+                                    <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl">
+
+                                        <p className="text-xs text-indigo-800">
+
                                             You are logged in as{" "}
+
                                             <span className="font-extrabold">
-                                                {hostCompany}
+                                                {loggedInName}
                                             </span>
-                                            . You will bypass name registration
-                                            and enter as the host.
+
+                                            .{" "}
+
+                                            {isHost
+                                                ? "You will bypass name registration and enter as the host."
+                                                : "You will bypass name registration and enter as the user."
+                                            }
+
                                         </p>
+
                                     </div>
+
                                 )}
 
                                 <Button

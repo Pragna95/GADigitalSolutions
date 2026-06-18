@@ -67,14 +67,60 @@ export default function HuddlePage() {
     link: ""
   });
 
-  const handleJoinSession = () => {
-    if (!meetingId.trim()) {
-      alert("Please enter a valid Meeting ID.");
+  // const handleJoinSession = () => {
+  //   if (!meetingId.trim()) {
+  //     alert("Please enter a valid Meeting ID.");
+  //     return;
+  //   }
+  //   console.log("Joining meeting:", meetingId);
+  // };
+  const handleJoinSession = async () => {
+    const input = meetingId.trim();
+
+    if (!input) {
+      toast.error("Please enter a meeting link");
       return;
     }
-    console.log("Joining meeting:", meetingId);
-  };
 
+    let meetingCode = null;
+    let meetingIdExtracted = null;
+
+    try {
+      // Case 1: Full URL
+      if (input.includes("http")) {
+        const url = new URL(input);
+        const parts = url.pathname.split("/").filter(Boolean);
+
+        meetingCode = parts[0];
+        meetingIdExtracted = parts[1];
+      }
+      // Case 2: direct format "code/id"
+      else {
+        const parts = input.split("/");
+        meetingCode = parts[0];
+        meetingIdExtracted = parts[1];
+      }
+
+      if (!meetingCode || !meetingIdExtracted) {
+        toast.error("Invalid meeting link format");
+        return;
+      }
+
+      // Validate with backend
+      const res = await api.get(
+        `/api/meeting/validate/${meetingCode}/${meetingIdExtracted}`
+      );
+
+      if (res.data?.valid) {
+        navigate(`/${meetingCode}/${meetingIdExtracted}`);
+      } else {
+        toast.error("Meeting not found or expired");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Invalid meeting link");
+    }
+  };
   const handleAddSession = (meetingDetails) => {
     const newSession = {
       id: Date.now(),

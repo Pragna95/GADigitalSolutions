@@ -18,6 +18,7 @@ function LoginAuth() {
                 email: usernameOrEmail, // Mapped to usernameOrEmail field
                 password: password,
             });
+            console.log("LOGIN RESPONSE:", response.data);
 
             if (response.data.token) {
                 localStorage.setItem("token", response.data.token);
@@ -28,41 +29,53 @@ function LoginAuth() {
                 if (rememberMe) {
                     localStorage.setItem("remember_me", "true");
                 }
-                
+
                 // Check if there is a pending meeting deep link in sessionStorage
                 const pendingMeetingStr = sessionStorage.getItem("pending_meeting");
                 if (pendingMeetingStr) {
                     sessionStorage.removeItem("pending_meeting");
+
                     let pending = pendingMeetingStr;
+
                     try {
                         pending = JSON.parse(pendingMeetingStr);
-                    } catch (e) {
-                        // If pending_meeting is already a string, keep it as-is.
-                    }
+                    } catch (e) { }
 
                     if (typeof pending === "string") {
-                        const destination = pending.startsWith("/") ? pending : `/${pending}`;
+                        sessionStorage.setItem("meeting_authenticated", "true");
+
+                        const destination = pending.startsWith("/")
+                            ? pending
+                            : `/${pending}`;
+
                         navigate(destination);
                         return;
                     }
 
-                    const { company, api_key, meeting_id } = pending;
-                    if (api_key) {
-                        navigate(`/${company}/${api_key}/${meeting_id}`);
-                    } else {
-                        navigate(`/lobby/${meeting_id}`);
-                    }
+                    sessionStorage.setItem("meeting_authenticated", "true");
+
+                    const { meeting_id } = pending;
+
+                    navigate(`/lobby/${meeting_id}`);
                     return;
                 }
-                
-                navigate("/dashboard");
+
+                const redirectPath =
+                    sessionStorage.getItem("redirect_after_login");
+
+                if (redirectPath) {
+                    sessionStorage.removeItem("redirect_after_login");
+                    navigate(redirectPath);
+                } else {
+                    navigate("/dashboard");
+                }
             }
         } catch (err) {
             if (err.response && err.response.data) {
                 setError(
                     err.response.data.detail ||
-                        err.response.data.message ||
-                        "Invalid email/username or password.",
+                    err.response.data.message ||
+                    "Invalid email/username or password.",
                 );
             } else {
                 setError("Could not connect to Auth Services backend.");
