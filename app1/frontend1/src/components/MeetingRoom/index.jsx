@@ -414,7 +414,7 @@ const MeetingRoom = () => {
         };
     }, [meetingId, localPeerId, participantName, isWebRtcReady]);
 
-    // ── Participant WebSocket: listens for countUpdate (real-time hand-raise count) ──
+    // ── Participant WebSocket: listens for countUpdate AND live participant grid ──
     useEffect(() => {
         if (!meetingId) return;
 
@@ -424,14 +424,50 @@ const MeetingRoom = () => {
 
         pWs.onopen = () => {
             console.log("[ParticipantWS] Connected:", wsUrl);
+            
+            // 1. Tell the backend this browser joined so it gets added to the grid!
+            pWs.send(JSON.stringify({
+                type: "participant_join",
+                name: participantName
+            }));
         };
 
         pWs.onmessage = (event) => {
             try {
                 const msg = JSON.parse(event.data);
+                
+                // Existing hand-raise logic
                 if (msg.event === "countUpdate" && typeof msg.count === "number") {
-                    // Server-authoritative hand-raise count — updates all tabs instantly
                     setLiveHandRaiseCount(msg.count);
+                }
+
+                // 2. NEW: Listen for the backend's live grid list and update the screen
+                if (msg.type === "participant_list") {
+                    console.log("Live Grid Update:", msg.participants);
+                    
+                    setRoomPeers((prevPeers) => {
+                        const next = { ...prevPeers };
+                        
+                        // Grab the IDs of everyone currently connected to the socket
+                        const liveIds = msg.participants.map(p => p.id);
+                        
+                        // Add any new users to the grid
+                        msg.participants.forEach((p) => {
+                            // Only add if they aren't already there via WebRTC
+                            if (!next[p.id]) {
+                                next[p.id] = { name: p.name, isWs: true };
+                            }
+                        });
+
+                        // Remove anyone who closed their browser
+                        Object.keys(next).forEach((key) => {
+                            if (next[key].isWs && !liveIds.includes(key)) {
+                                delete next[key];
+                            }
+                        });
+
+                        return next;
+                    });
                 }
             } catch (err) {
                 console.error("[ParticipantWS] parse error", err);
@@ -447,93 +483,7 @@ const MeetingRoom = () => {
             }
             participantWsRef.current = null;
         };
-    }, [meetingId]);
-
-    useEffect(() => {
-        let interval;
-
-        if (isRecording) {
-            interval = setInterval(() => {
-                setRecordingTime((prev) => prev + 1);
-            }, 1000);
-        }
-
-        return () => clearInterval(interval);
-    }, [isRecording]);
-
-    const formatTime = (time) => {
-        const minutes = Math.floor(time / 60);
-        const seconds = time % 60;
-        return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-    };
-
-    const API_URL = "http://127.0.0.1:8000/api/meetings";
-
-    useEffect(() => {
-        if (!meetingId) {
-            console.warn("Missing meetingId, skipping participant state fetch.");
-            return;
-        }
-        fetchParticipantState();
-        fetchAllParticipants();
-    }, [meetingId]);
-
-    const fetchAllParticipants = async () => {
-        try {
-            const response = await axios.get(`${API_URL}/participants/${meetingId}/`);
-            const participantsList = response.data.data || [];
-            const initialHandRaised = {};
-            participantsList.forEach((p) => {
-                if (p.hand_raised) {
-                    initialHandRaised[p.user_id] = p.username || `Guest ${p.user_id.slice(-4)}`;
-                }
-            });
-            setHandRaisedUsers(initialHandRaised);
-            // Seed the live count from initial participant data so badge shows immediately
-            setLiveHandRaiseCount(Object.keys(initialHandRaised).length);
-        } catch (error) {
-            console.error("Failed to fetch all participants:", error);
-        }
-    };
-
-    const fetchParticipantState = async () => {
-        try {
-            const apiKey = localStorage.getItem("api_key");
-            const response = await axios.get(
-                `${API_URL}/participant/${meetingId}/${userId}/`,
-                {
-                    headers: {
-                        "X-API-Key": apiKey,
-                    },
-                },
-            );
-
-            const data = response.data.data;
-            if (data) {
-                setIsMicOn(data.mic_on);
-                setIsVideoOn(data.video_on);
-                setIsHandRaised(data.hand_raised);
-                console.log("Participant Loaded", data);
-                if (data.hand_raised) {
-                    setHandRaisedUsers((prev) => ({
-                        ...prev,
-                        [userId]: displayName,
-                    }));
-                }
-            }
-        } catch (error) {
-            if (error.response && error.response.status === 404) {
-                console.log(
-                    "New participant! Initializing local UI with default states.",
-                );
-                updateParticipantState(true, true, false);
-            } else {
-                console.error("Failed to fetch participant state:", error);
-            }
-        } finally {
-            setIsLoadingState(false);
-        }
-    };
+    }, [meetingId, participantName]);
 
     const updateParticipantState = async (mic, video, hand) => {
         try {

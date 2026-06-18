@@ -397,7 +397,7 @@ const Meeting = () => {
         };
     }, [meetingId, localPeerId, participantName, isWebRtcReady]);
 
-    // ── Participant WebSocket: listens for countUpdate (real-time hand-raise count) ──
+    // ── Participant WebSocket: listens for grid updates and hand-raise counts ──
     useEffect(() => {
         if (!meetingId) return;
 
@@ -407,18 +407,26 @@ const Meeting = () => {
 
         pWs.onopen = () => {
             console.log("[ParticipantWS] Connected:", wsUrl);
+            
+            // 🔥 CRITICAL FIX 1: Announce we joined so the backend counts us in the grid!
+            pWs.send(JSON.stringify({
+                type: "participant_join",
+                name: participantName
+            }));
         };
 
         pWs.onmessage = (event) => {
             try {
                 const msg = JSON.parse(event.data);
                 const data = msg;
+
+                // 1. Maintain your existing Hand Raise Logic
                 if (data.type === "hand_count_init" || data.type === "hand_count_update") {
-                    document.getElementById('hand-count').innerText = data.count;
+                    const el = document.getElementById('hand-count');
+                    if (el) el.innerText = data.count;
                     return;
                 }
                 if (data.type === "hand_raise") {
-                    // toggle hand icon for data.user_id
                     setHandRaisedUsers((prev) => {
                         const next = { ...prev };
                         if (data.is_raised) {
@@ -429,24 +437,13 @@ const Meeting = () => {
                             }
                         } else {
                             delete next[data.user_id];
-                            setHandRaiseNotifications((prev) =>
-                                prev.filter((n) => n.uid !== data.user_id)
-                            );
-                            if (handRaiseTimers.current[data.user_id]) {
-                                clearTimeout(handRaiseTimers.current[data.user_id]);
-                                delete handRaiseTimers.current[data.user_id];
-                            }
+                            setHandRaiseNotifications((prev) => prev.filter((n) => n.uid !== data.user_id));
                         }
                         return next;
                     });
                 } else if (msg.event === "countUpdate" && typeof msg.count === "number") {
-                    // Server-authoritative hand-raise count — syncs badge for ALL browsers
                     setLiveHandRaiseCount(msg.count);
                 } else if (msg.event === "state_changed" && msg.user_id && msg.user_id !== userId) {
-                    // Fallback: mirror the audio-WS state_changed handler here so that
-                    // handRaisedUsers (ghost notifications + sidebar) updates even if the
-                    // audio WS path fails. Both consumers are in the same channel group,
-                    // so this message arrives on BOTH WebSocket connections.
                     setHandRaisedUsers((prev) => {
                         const next = { ...prev };
                         if (msg.hand_raised) {
@@ -455,17 +452,39 @@ const Meeting = () => {
                             showHandRaiseGhost(msg.user_id, name);
                         } else {
                             delete next[msg.user_id];
-                            setHandRaiseNotifications((prev) =>
-                                prev.filter((n) => n.uid !== msg.user_id)
-                            );
-                            if (handRaiseTimers.current[msg.user_id]) {
-                                clearTimeout(handRaiseTimers.current[msg.user_id]);
-                                delete handRaiseTimers.current[msg.user_id];
-                            }
                         }
                         return next;
                     });
                 }
+
+                // 🔥 CRITICAL FIX 2: Listen for the dynamic participant grid list!
+                if (msg.type === "participant_list") {
+                    console.log("Live Grid Update from Backend:", msg.participants);
+                    
+                    setRoomPeers((prevPeers) => {
+                        const next = { ...prevPeers };
+                        
+                        // Grab the unique connection IDs of everyone currently live
+                        const liveWsIds = msg.participants.map(p => p.id);
+                        
+                        // Add any new users to the screen
+                        msg.participants.forEach((p) => {
+                            if (!next[p.id]) {
+                                next[p.id] = { name: p.name, isWs: true };
+                            }
+                        });
+
+                        // Remove anyone who closed their browser tab
+                        Object.keys(next).forEach((key) => {
+                            if (next[key].isWs && !liveWsIds.includes(key)) {
+                                delete next[key];
+                            }
+                        });
+
+                        return next;
+                    });
+                }
+
             } catch (err) {
                 console.error("[ParticipantWS] parse error", err);
             }
@@ -480,7 +499,7 @@ const Meeting = () => {
             }
             participantWsRef.current = null;
         };
-    }, [meetingId]);
+    }, [meetingId, participantName, userId]);
 
     const formatTime = (time) => {
         const minutes = Math.floor(time / 60);
