@@ -30,8 +30,18 @@ const Sidebar = ({
             {(showHandRaise || showParticipants) && !showMenuPage && (
                 <div className="w-[20%] bg-white rounded-[24px] border border-slate-200/80 p-4 flex flex-col h-full shadow-[0_4px_20px_rgba(0,0,0,0.02)] animate-slide-in-right">
                     <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-[17px] font-bold text-slate-800">
-                            {showHandRaise ? "Hand Raise" : "Participants"}
+                        <h2 className="text-[17px] font-bold text-slate-800 flex items-center gap-2">
+                            {showHandRaise ? (
+                                <>
+                                    <span>✋</span>
+                                    Hand Raise
+                                    {handRaiseMembers.length > 0 && (
+                                        <span className="ml-1 bg-blue-600 text-white text-[11px] font-bold px-2 py-0.5 rounded-full">
+                                            {handRaiseMembers.length}
+                                        </span>
+                                    )}
+                                </>
+                            ) : "Participants"}
                         </h2>
                         <button
                             onClick={() => { setShowHandRaise(false); setShowParticipants(false); }}
@@ -47,18 +57,26 @@ const Sidebar = ({
                     </div>
 
                     <div className="space-y-3 overflow-y-auto flex-1">
-                        {(showHandRaise ? handRaiseMembers : participantMembers.slice(0, 8)).map((member, index) => (
-                            <div key={index} className="border border-slate-100 rounded-xl px-3 py-2 flex items-center gap-3 hover:bg-slate-50 cursor-pointer">
-                                {showHandRaise ? (
-                                    <div className="w-10 h-10 rounded-[12px] bg-[#ACBFFF] flex items-center justify-center shadow-md shrink-0">
-                                        <span className="text-[16px] text-[#394C84]">👤</span>
-                                    </div>
-                                ) : (
-                                    <img src={`https://randomuser.me/api/portraits/${index % 2 === 0 ? "men" : "women"}/${index + 20}.jpg`} className="w-10 h-10 rounded-full object-cover" alt="" />
-                                )}
-                                <span className="text-sm font-semibold text-slate-700">{member}</span>
+                        {showHandRaise && handRaiseMembers.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center h-full py-10 gap-3 text-slate-400">
+                                <span className="text-4xl opacity-40">✋</span>
+                                <p className="text-sm font-medium">No hands raised yet</p>
                             </div>
-                        ))}
+                        ) : (
+                            (showHandRaise ? handRaiseMembers : participantMembers.slice(0, 8)).map((member, index) => (
+                                <div key={index} className="border border-slate-100 rounded-xl px-3 py-2 flex items-center gap-3 hover:bg-slate-50 cursor-pointer">
+                                    {showHandRaise ? (
+                                        <div className="w-10 h-10 rounded-[12px] bg-[#ACBFFF] flex items-center justify-center shadow-md shrink-0 relative">
+                                            <span className="text-[16px] text-[#394C84]">👤</span>
+                                            <span className="absolute -top-1 -right-1 text-[12px]">✋</span>
+                                        </div>
+                                    ) : (
+                                        <img src={`https://randomuser.me/api/portraits/${index % 2 === 0 ? "men" : "women"}/${index + 20}.jpg`} className="w-10 h-10 rounded-full object-cover" alt="" />
+                                    )}
+                                    <span className="text-sm font-semibold text-slate-700">{member}</span>
+                                </div>
+                            ))
+                        )}
                     </div>
 
                     {!showHandRaise && (

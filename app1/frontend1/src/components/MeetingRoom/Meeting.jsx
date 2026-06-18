@@ -51,6 +51,11 @@ const Meeting = () => {
     const [handRaisedUsers, setHandRaisedUsers] = useState({});
     const handRaiseMembers = Object.values(handRaisedUsers);
     const handRaiseCount = Object.keys(handRaisedUsers).length;
+    // Server-authoritative count synced in real-time via WebSocket (same across all tabs)
+    const [liveHandRaiseCount, setLiveHandRaiseCount] = useState(0);
+    const [handRaiseNotifications, setHandRaiseNotifications] = useState([]);
+    const handRaiseTimers = useRef({});
+    const participantWsRef = useRef(null);
 
     const [message, setMessage] = useState("");
     const [chatMessages, setChatMessages] = useState([
@@ -342,19 +347,23 @@ const Meeting = () => {
                         setHandRaisedUsers((prev) => {
                             const next = { ...prev };
                             if (hand_raised) {
-                                next[user_id] = username || `Guest ${user_id.slice(-4)}`;
-                                toast(`${username || "Someone"} raised their hand`, {
-                                    icon: "✋",
-                                    id: `hand-raise-${user_id}`,
-                                    duration: 60000,
-                                });
+                                const displayedName = username || `Guest ${user_id.slice(-4)}`;
+                                next[user_id] = displayedName;
+                                showHandRaiseGhost(user_id, displayedName);
                             } else {
                                 delete next[user_id];
-                                toast.dismiss(`hand-raise-${user_id}`);
+                                setHandRaiseNotifications((prev) => prev.filter((n) => n.uid !== user_id));
+                                if (handRaiseTimers.current[user_id]) {
+                                    clearTimeout(handRaiseTimers.current[user_id]);
+                                    delete handRaiseTimers.current[user_id];
+                                }
                             }
                             return next;
                         });
                     }
+                } else if (payload.event === "countUpdate" && typeof payload.count === "number") {
+                    // Server-authoritative count broadcast — update all browsers in sync
+                    setLiveHandRaiseCount(payload.count);
                 } else {
                     await handleSignalMessage(payload);
                 }
@@ -388,6 +397,64 @@ const Meeting = () => {
         };
     }, [meetingId, localPeerId, participantName, isWebRtcReady]);
 
+    // ── Participant WebSocket: listens for countUpdate (real-time hand-raise count) ──
+    useEffect(() => {
+        if (!meetingId) return;
+
+        const wsUrl = `ws://127.0.0.1:8000/ws/participants/${meetingId}/`;
+        const pWs = new WebSocket(wsUrl);
+        participantWsRef.current = pWs;
+
+        pWs.onopen = () => {
+            console.log("[ParticipantWS] Connected:", wsUrl);
+        };
+
+        pWs.onmessage = (event) => {
+            try {
+                const msg = JSON.parse(event.data);
+                if (msg.event === "countUpdate" && typeof msg.count === "number") {
+                    // Server-authoritative hand-raise count — syncs badge for ALL browsers
+                    setLiveHandRaiseCount(msg.count);
+                } else if (msg.event === "state_changed" && msg.user_id && msg.user_id !== userId) {
+                    // Fallback: mirror the audio-WS state_changed handler here so that
+                    // handRaisedUsers (ghost notifications + sidebar) updates even if the
+                    // audio WS path fails. Both consumers are in the same channel group,
+                    // so this message arrives on BOTH WebSocket connections.
+                    setHandRaisedUsers((prev) => {
+                        const next = { ...prev };
+                        if (msg.hand_raised) {
+                            const name = msg.username || `Guest ${msg.user_id.slice(-4)}`;
+                            next[msg.user_id] = name;
+                            showHandRaiseGhost(msg.user_id, name);
+                        } else {
+                            delete next[msg.user_id];
+                            setHandRaiseNotifications((prev) =>
+                                prev.filter((n) => n.uid !== msg.user_id)
+                            );
+                            if (handRaiseTimers.current[msg.user_id]) {
+                                clearTimeout(handRaiseTimers.current[msg.user_id]);
+                                delete handRaiseTimers.current[msg.user_id];
+                            }
+                        }
+                        return next;
+                    });
+                }
+            } catch (err) {
+                console.error("[ParticipantWS] parse error", err);
+            }
+        };
+
+        pWs.onerror = (err) => console.warn("[ParticipantWS] error", err);
+        pWs.onclose = () => console.log("[ParticipantWS] closed");
+
+        return () => {
+            if (pWs.readyState === WebSocket.OPEN || pWs.readyState === WebSocket.CONNECTING) {
+                pWs.close();
+            }
+            participantWsRef.current = null;
+        };
+    }, [meetingId]);
+
     const formatTime = (time) => {
         const minutes = Math.floor(time / 60);
         const seconds = time % 60;
@@ -420,6 +487,11 @@ const Meeting = () => {
                 }
             });
             setHandRaisedUsers(initialHandRaised);
+            // Do NOT seed liveHandRaiseCount from DB here — DB data can be stale from
+            // a previous session (hand_raised stays true if the user closed without lowering).
+            // The correct count is broadcast by the server via countUpdate WebSocket event
+            // whenever any participant state changes, including the reset-on-join call in
+            // fetchParticipantState below.
         } catch (error) {
             console.error("Failed to fetch all participants:", error);
         }
@@ -435,14 +507,15 @@ const Meeting = () => {
             if (data) {
                 setIsMicOn(data.mic_on);
                 setIsVideoOn(data.video_on);
-                setIsHandRaised(data.hand_raised);
-                console.log("Participant Loaded", data);
-                if (data.hand_raised) {
-                    setHandRaisedUsers((prev) => ({
-                        ...prev,
-                        [userId]: displayName,
-                    }));
-                }
+                // Always reset hand_raised to false on a fresh join regardless of the
+                // DB value. The DB stores the state from the *previous* session (the user
+                // may have closed without lowering their hand). Resetting here:
+                //   1. Keeps local UI consistent (hand button not stuck as "raised").
+                //   2. Calls updateParticipantState which removes this userId from the
+                //      server cache's raised_set and broadcasts a fresh countUpdate to
+                //      ALL browsers — correcting the stale "1" default count.
+                setIsHandRaised(false);
+                updateParticipantState(data.mic_on, data.video_on, false);
             }
         } catch (error) {
             if (error.response && error.response.status === 404) {
@@ -458,6 +531,7 @@ const Meeting = () => {
         if (!meetingId || !userId) return;
         try {
             await axios.post(
+                
                 `${API_URL}/participant/update/`,
                 {
                     user_id: userId,
@@ -496,6 +570,21 @@ const Meeting = () => {
         updateParticipantState(isMicOn, newVideoState, isHandRaised);
     };
 
+    const showHandRaiseGhost = (uid, name) => {
+        const notifId = `${uid}-${Date.now()}`;
+        setHandRaiseNotifications((prev) => [
+            ...prev.filter((n) => n.uid !== uid),
+            { id: notifId, uid, name },
+        ]);
+        if (handRaiseTimers.current[uid]) {
+            clearTimeout(handRaiseTimers.current[uid]);
+        }
+        handRaiseTimers.current[uid] = setTimeout(() => {
+            setHandRaiseNotifications((prev) => prev.filter((n) => n.uid !== uid));
+            delete handRaiseTimers.current[uid];
+        }, 4000);
+    };
+
     const toggleHandRaise = () => {
         const newHand = !isHandRaised;
         setIsHandRaised(newHand);
@@ -503,15 +592,18 @@ const Meeting = () => {
             const next = { ...prev };
             if (newHand) {
                 next[userId] = displayName;
-                toast("You raised your hand", {
-                    icon: "✋",
-                    id: `hand-raise-${userId}`,
-                    duration: 60000,
-                });
+                showHandRaiseGhost(userId, "You");
             } else {
                 delete next[userId];
-                toast.dismiss(`hand-raise-${userId}`);
+                setHandRaiseNotifications((prev) => prev.filter((n) => n.uid !== userId));
+                if (handRaiseTimers.current[userId]) {
+                    clearTimeout(handRaiseTimers.current[userId]);
+                    delete handRaiseTimers.current[userId];
+                }
             }
+            // Count is NOT updated here — liveHandRaiseCount is driven exclusively
+            // by the server's countUpdate WebSocket broadcast so every browser
+            // (including this one) receives the same authoritative value.
             return next;
         });
         updateParticipantState(isMicOn, isVideoOn, newHand);
@@ -580,6 +672,25 @@ const Meeting = () => {
 
     return (
         <div className="h-screen w-screen bg-[#f4f4f5] flex flex-col overflow-hidden font-sans">
+            {/* ✋ HAND RAISE GHOST NOTIFICATIONS */}
+            <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-50 flex flex-col-reverse items-center gap-3 pointer-events-none">
+                {handRaiseNotifications.map((notif) => (
+                    <div
+                        key={notif.id}
+                        className="flex items-center gap-3 bg-white/95 backdrop-blur-xl border border-white/60 shadow-[0_8px_32px_rgba(0,0,0,0.18)] rounded-2xl px-5 py-3 animate-hand-raise-ghost"
+                        style={{ animation: "handRaiseIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both" }}
+                    >
+                        <span className="text-2xl animate-hand-wave">✋</span>
+                        <div>
+                            <p className="text-sm font-bold text-slate-800 leading-tight">
+                                {notif.name === "You" ? "You raised your hand" : `${notif.name} raised their hand`}
+                            </p>
+                            <p className="text-[11px] text-slate-400 mt-0.5">Everyone can see this</p>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
             {screenShareNotice && (
                 <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/80 text-white px-4 py-2 rounded-xl z-50 shadow-lg">
                     {screenShareNotice}
@@ -612,7 +723,7 @@ const Meeting = () => {
                     isVideoOn={isVideoOn}
                     remoteStreams={remoteStreams}
                     roomPeers={roomPeers}
-                    handRaiseCount={handRaiseCount}
+                    handRaiseCount={liveHandRaiseCount}
                 />
 
                 <Sidebar

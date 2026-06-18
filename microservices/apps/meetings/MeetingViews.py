@@ -341,69 +341,114 @@ class ParticipantStateView(APIView):
 
 
 class UpdateParticipantStateView(APIView):
+    """
+    POST /api/meetings/participant/update/
 
+    Updates participant state (mic, video, hand_raised) and broadcasts
+    two events to all connected WebSocket clients in the meeting group:
+      1. state_changed  — individual participant state
+      2. countUpdate    — total number of raised hands in the meeting
+    """
     permission_classes = [AllowAny]
 
     def post(self, request):
-
-        meeting_identifier = request.data.get("meeting_id")
-        user_identifier = request.data.get("user_id")
-        username = request.data.get("username")
-
-        meeting = get_meeting_by_identifier(meeting_identifier)
-        if not meeting:
-            return Response({"error": "Meeting not found"}, status=status.HTTP_404_NOT_FOUND)
-
-        user = get_user_by_identifier(meeting.product, user_identifier, name=username)
-        if not user:
-            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
-
-        state, created = ParticipantState.objects.get_or_create(
-            meeting=meeting,
-            user=user
-        )
-
-        if username:
-            state.username = username
-            if user.name != username:
-                user.name = username
-                user.save()
-
-        mic_on = request.data.get("mic_on")
-        if mic_on is not None:
-            state.mic_on = bool(mic_on)
-
-        video_on = request.data.get("video_on")
-        if video_on is not None:
-            state.video_on = bool(video_on)
-
-        hand_raised = request.data.get("hand_raised")
-        if hand_raised is not None:
-            state.hand_raised = bool(hand_raised)
-
-        state.save()
-
-        # Broadcast update to websocket layer
+        from django.core.cache import cache
         from channels.layers import get_channel_layer
         from asgiref.sync import async_to_sync
+
+        meeting_identifier = str(request.data.get("meeting_id", "")).strip()
+        user_identifier    = str(request.data.get("user_id", "")).strip()
+        username           = request.data.get("username") or user_identifier
+
+        if not meeting_identifier or not user_identifier:
+            return Response(
+                {"error": "meeting_id and user_id are required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Try to resolve meeting from DB — non-fatal if it doesn't exist.
+        # This allows testing with any meeting_id string without needing a DB record.
+        meeting = get_meeting_by_identifier(meeting_identifier)
+
+        # Use the real UUID when available, otherwise the raw identifier string.
+        meeting_key = str(meeting.id) if meeting else meeting_identifier
+        group_name  = f"meeting_{meeting_key}"
+
+        # Persist participant state to DB only when meeting exists
+        state = None
+        if meeting:
+            try:
+                user = get_user_by_identifier(meeting.product, user_identifier, name=username)
+                if user:
+                    state, _ = ParticipantState.objects.get_or_create(
+                        meeting=meeting, user=user
+                    )
+                    if username:
+                        state.username = username
+                        if user.name != username:
+                            user.name = username
+                            user.save()
+                    mic_on = request.data.get("mic_on")
+                    if mic_on is not None:
+                        state.mic_on = bool(mic_on)
+                    video_on = request.data.get("video_on")
+                    if video_on is not None:
+                        state.video_on = bool(video_on)
+                    hand_raised_val = request.data.get("hand_raised")
+                    if hand_raised_val is not None:
+                        state.hand_raised = bool(hand_raised_val)
+                    state.save()
+            except Exception as e:
+                # DB errors must NOT block the real-time count broadcast
+                print(f"[UpdateParticipantStateView] DB warning (non-fatal): {e}")
+
+        # --- Compute per-meeting hand-raise count from cache ---
+        # Each raised hand is tracked as a key in a cache set.
+        cache_key = f"meeting:{meeting_key}:raised_hands"
+        raised_set = cache.get(cache_key) or set()
+
+        if request.data.get("hand_raised"):
+            raised_set.add(str(user_identifier))
+        else:
+            raised_set.discard(str(user_identifier))
+
+        cache.set(cache_key, raised_set, timeout=None)
+        hand_raise_count = len(raised_set)
+
+        # --- Broadcast via Django Channels ---
         channel_layer = get_channel_layer()
+
+        # 1. Broadcast individual state_changed so other participants update their UI
         async_to_sync(channel_layer.group_send)(
-            f"meeting_{meeting.id}",
+            group_name,
             {
                 "type": "participant_update",
                 "data": {
                     "event": "state_changed",
                     "user_id": user_identifier,
-                    "username": state.username or user.name,
-                    "mic_on": state.mic_on,
-                    "video_on": state.video_on,
-                    "hand_raised": state.hand_raised
+                    "username": state.username if state else username,
+                    "mic_on": state.mic_on if state else request.data.get("mic_on"),
+                    "video_on": state.video_on if state else request.data.get("video_on"),
+                    "hand_raised": bool(request.data.get("hand_raised"))
+                }
+            }
+        )
+
+        # 2. Broadcast global hand-raise count so all tabs sync in real time
+        async_to_sync(channel_layer.group_send)(
+            group_name,
+            {
+                "type": "count_update",
+                "data": {
+                    "event": "countUpdate",
+                    "count": hand_raise_count
                 }
             }
         )
 
         return Response({
-            "message": "updated"
+            "message": "updated",
+            "count": hand_raise_count
         })
 
 

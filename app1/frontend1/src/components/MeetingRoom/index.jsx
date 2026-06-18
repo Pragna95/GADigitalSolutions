@@ -43,6 +43,11 @@ const MeetingRoom = () => {
     const [handRaisedUsers, setHandRaisedUsers] = useState({});
     const handRaiseMembers = Object.values(handRaisedUsers);
     const handRaiseCount = Object.keys(handRaisedUsers).length;
+    // Server-authoritative count synced in real-time via WebSocket
+    const [liveHandRaiseCount, setLiveHandRaiseCount] = useState(0);
+    const [handRaiseNotifications, setHandRaiseNotifications] = useState([]);
+    const handRaiseTimers = useRef({});
+    const participantWsRef = useRef(null);
     const [recordingTime, setRecordingTime] = useState(0);
     const [recordingStopped, setRecordingStopped] = useState(false);
     const [isMicOn, setIsMicOn] = useState(true);
@@ -54,6 +59,14 @@ const MeetingRoom = () => {
     const meetingId = meeting_id || "b40842cc-954a-4bc1-a9da-9036a03e7657";
     const [searchParams] = useSearchParams();
     const participantName = searchParams.get("name") || "Andaya";
+    const displayName = participantName;
+
+    // Unique user ID for participant state tracking
+    const userId = useRef(
+        typeof crypto !== "undefined" && crypto.randomUUID
+            ? `u-${crypto.randomUUID().slice(0, 8)}`
+            : `u-${Math.random().toString(36).slice(2, 10)}`
+    ).current;
 
     const getInitials = (nameStr) => {
         if (!nameStr) return "AD";
@@ -322,20 +335,20 @@ const MeetingRoom = () => {
                 const payload = JSON.parse(event.data);
                 if (payload.event === "state_changed") {
                     const { user_id, username, hand_raised } = payload;
-                    const localUserId = "042c3663-c7bb-4783-b2a5-71b715b342b2";
-                    if (user_id && user_id !== localUserId) {
+                    if (user_id && user_id !== userId) {
                         setHandRaisedUsers((prev) => {
                             const next = { ...prev };
                             if (hand_raised) {
-                                next[user_id] = username || `Guest ${user_id.slice(-4)}`;
-                                toast(`${username || "Someone"} raised their hand`, {
-                                    icon: "✋",
-                                    id: `hand-raise-${user_id}`,
-                                    duration: 60000,
-                                });
+                                const displayedName = username || `Guest ${user_id.slice(-4)}`;
+                                next[user_id] = displayedName;
+                                showHandRaiseGhost(user_id, displayedName);
                             } else {
                                 delete next[user_id];
-                                toast.dismiss(`hand-raise-${user_id}`);
+                                setHandRaiseNotifications((prev) => prev.filter((n) => n.uid !== user_id));
+                                if (handRaiseTimers.current[user_id]) {
+                                    clearTimeout(handRaiseTimers.current[user_id]);
+                                    delete handRaiseTimers.current[user_id];
+                                }
                             }
                             return next;
                         });
@@ -401,6 +414,41 @@ const MeetingRoom = () => {
         };
     }, [meetingId, localPeerId, participantName, isWebRtcReady]);
 
+    // ── Participant WebSocket: listens for countUpdate (real-time hand-raise count) ──
+    useEffect(() => {
+        if (!meetingId) return;
+
+        const wsUrl = `ws://127.0.0.1:8000/ws/participants/${meetingId}/`;
+        const pWs = new WebSocket(wsUrl);
+        participantWsRef.current = pWs;
+
+        pWs.onopen = () => {
+            console.log("[ParticipantWS] Connected:", wsUrl);
+        };
+
+        pWs.onmessage = (event) => {
+            try {
+                const msg = JSON.parse(event.data);
+                if (msg.event === "countUpdate" && typeof msg.count === "number") {
+                    // Server-authoritative hand-raise count — updates all tabs instantly
+                    setLiveHandRaiseCount(msg.count);
+                }
+            } catch (err) {
+                console.error("[ParticipantWS] parse error", err);
+            }
+        };
+
+        pWs.onerror = (err) => console.warn("[ParticipantWS] error", err);
+        pWs.onclose = () => console.log("[ParticipantWS] closed");
+
+        return () => {
+            if (pWs.readyState === WebSocket.OPEN || pWs.readyState === WebSocket.CONNECTING) {
+                pWs.close();
+            }
+            participantWsRef.current = null;
+        };
+    }, [meetingId]);
+
     useEffect(() => {
         let interval;
 
@@ -441,6 +489,8 @@ const MeetingRoom = () => {
                 }
             });
             setHandRaisedUsers(initialHandRaised);
+            // Seed the live count from initial participant data so badge shows immediately
+            setLiveHandRaiseCount(Object.keys(initialHandRaised).length);
         } catch (error) {
             console.error("Failed to fetch all participants:", error);
         }
@@ -449,7 +499,6 @@ const MeetingRoom = () => {
     const fetchParticipantState = async () => {
         try {
             const apiKey = localStorage.getItem("api_key");
-            const userId = "042c3663-c7bb-4783-b2a5-71b715b342b2";
             const response = await axios.get(
                 `${API_URL}/participant/${meetingId}/${userId}/`,
                 {
@@ -489,7 +538,6 @@ const MeetingRoom = () => {
     const updateParticipantState = async (mic, video, hand) => {
         try {
             const apiKey = localStorage.getItem("api_key");
-            const userId = "042c3663-c7bb-4783-b2a5-71b715b342b2";
             console.log("meetingId =", meetingId);
             await axios.post(
                 `${API_URL}/participant/update/`,
@@ -525,23 +573,39 @@ const MeetingRoom = () => {
         updateParticipantState(isMicOn, newVideoState, isHandRaised);
     };
 
+    const showHandRaiseGhost = (uid, name) => {
+        const notifId = `${uid}-${Date.now()}`;
+        setHandRaiseNotifications((prev) => [
+            ...prev.filter((n) => n.uid !== uid),
+            { id: notifId, uid, name },
+        ]);
+        if (handRaiseTimers.current[uid]) {
+            clearTimeout(handRaiseTimers.current[uid]);
+        }
+        handRaiseTimers.current[uid] = setTimeout(() => {
+            setHandRaiseNotifications((prev) => prev.filter((n) => n.uid !== uid));
+            delete handRaiseTimers.current[uid];
+        }, 4000);
+    };
+
     const toggleHandRaise = () => {
         const newHand = !isHandRaised;
         setIsHandRaised(newHand);
-        const userId = "042c3663-c7bb-4783-b2a5-71b715b342b2";
         setHandRaisedUsers((prev) => {
             const next = { ...prev };
             if (newHand) {
                 next[userId] = displayName;
-                toast("You raised your hand", {
-                    icon: "✋",
-                    id: `hand-raise-${userId}`,
-                    duration: 60000,
-                });
+                showHandRaiseGhost(userId, "You");
             } else {
                 delete next[userId];
-                toast.dismiss(`hand-raise-${userId}`);
+                setHandRaiseNotifications((prev) => prev.filter((n) => n.uid !== userId));
+                if (handRaiseTimers.current[userId]) {
+                    clearTimeout(handRaiseTimers.current[userId]);
+                    delete handRaiseTimers.current[userId];
+                }
             }
+            // Optimistic update so the badge reacts instantly before WS round-trip
+            setLiveHandRaiseCount(Object.keys(next).length);
             return next;
         });
         updateParticipantState(isMicOn, isVideoOn, newHand);
@@ -549,6 +613,25 @@ const MeetingRoom = () => {
 
     return (
         <div className="h-screen w-screen bg-[#f4f4f5] flex flex-col overflow-hidden font-sans">
+            {/* ✋ HAND RAISE GHOST NOTIFICATIONS */}
+            <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-50 flex flex-col-reverse items-center gap-3 pointer-events-none">
+                {handRaiseNotifications.map((notif) => (
+                    <div
+                        key={notif.id}
+                        className="flex items-center gap-3 bg-white/95 backdrop-blur-xl border border-white/60 shadow-[0_8px_32px_rgba(0,0,0,0.18)] rounded-2xl px-5 py-3"
+                        style={{ animation: "handRaiseIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both" }}
+                    >
+                        <span className="text-2xl animate-hand-wave">✋</span>
+                        <div>
+                            <p className="text-sm font-bold text-slate-800 leading-tight">
+                                {notif.name === "You" ? "You raised your hand" : `${notif.name} raised their hand`}
+                            </p>
+                            <p className="text-[11px] text-slate-400 mt-0.5">Everyone can see this</p>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
             <Header
                 isRecording={isRecording}
                 setIsRecording={setIsRecording}
@@ -575,7 +658,7 @@ const MeetingRoom = () => {
                     isVideoOn={isVideoOn}
                     remoteStreams={remoteStreams}
                     roomPeers={roomPeers}
-                    handRaiseCount={handRaiseCount}
+                    handRaiseCount={liveHandRaiseCount}
                 />
 
                 <Sidebar

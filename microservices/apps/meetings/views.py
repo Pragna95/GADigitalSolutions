@@ -155,9 +155,13 @@ def toggle_mic(request):
         mic_on = data.get("mic_on")
         username = data.get("username", f"User_{user_id}")
 
+        meeting = get_meeting_by_identifier(meeting_id)
+        if not meeting:
+            return JsonResponse({"error": "Meeting not found"}, status=404)
+
         participant, created = ParticipantState.objects.get_or_create(
             user_id=user_id,
-            meeting_id=meeting_id,
+            meeting=meeting,
             defaults={"username": username}
         )
 
@@ -167,7 +171,7 @@ def toggle_mic(request):
         # Broadcast update over WebSockets
         channel_layer = get_channel_layer()
         async_to_sync(channel_layer.group_send)(
-            f"meeting_{meeting_id}",
+            f"meeting_{meeting.id}",
             {
                 "type": "participant_update",
                 "data": {
@@ -368,10 +372,14 @@ def update_participant(request):
         video_on = data.get("video_on")
         hand_raised = data.get("hand_raised")
 
+        meeting = get_meeting_by_identifier(meeting_id)
+        if not meeting:
+            return JsonResponse({"error": "Meeting not found"}, status=404)
+
         # Fixed: Query on user_id, default username if newly created
         participant, created = ParticipantState.objects.get_or_create(
             user_id=user_id,
-            meeting_id=meeting_id,
+            meeting=meeting,
             defaults={"username": username}
         )
 
@@ -389,7 +397,7 @@ def update_participant(request):
         # Broadcast update to websocket layer
         channel_layer = get_channel_layer()
         async_to_sync(channel_layer.group_send)(
-            f"meeting_{meeting_id}",
+            f"meeting_{meeting.id}",
             {
                 "type": "participant_update",
                 "data": {

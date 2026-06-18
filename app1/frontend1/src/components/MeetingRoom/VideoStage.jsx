@@ -164,17 +164,32 @@ const VideoStage = ({
 
                         {/* HAND RAISE OVERLAY */}
                         {handRaiseCount > 0 && (
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 animate-fade-in">
                                 <button
                                     onClick={() => {
                                         setShowHandRaise(!showHandRaise);
                                         setShowParticipants(false);
                                         setShowMenuPage(false);
                                     }}
-                                    className="bg-white hover:bg-gray-50 h-[38px] px-4 rounded-[22px] flex items-center justify-center shadow-lg border border-gray-100 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
+                                    className="bg-white hover:bg-yellow-50 h-[38px] px-4 rounded-[22px] flex items-center justify-center shadow-lg border border-yellow-200 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer gap-2"
                                 >
-                                    <span className="text-[18px] font-bold leading-none text-black">
-                                        ✋ {handRaiseCount}
+                                    <span className="text-[18px] leading-none">✋</span>
+                                    <span className="text-[15px] font-bold leading-none text-slate-800"
+                                        style={{
+                                            display: "inline-flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            minWidth: "20px",
+                                            background: "#fbbf24",
+                                            color: "#1e293b",
+                                            borderRadius: "999px",
+                                            padding: "2px 8px",
+                                            fontWeight: 800,
+                                            fontSize: "13px",
+                                            boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
+                                        }}
+                                    >
+                                        {handRaiseCount}
                                     </span>
                                 </button>
 
