@@ -775,6 +775,10 @@ const Meeting = () => {
                     handRaiseMembers={handRaiseMembers}
                     participantMembers={participantMembers}
                     setShowParticipantsGridDirect={setShowParticipantsGrid}
+
+                    meetingId={meetingId}
+                    userId={userId}
+                    participantName={participantName}
                 />
 
                 <ScreenShareModule
