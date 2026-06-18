@@ -1,5 +1,5 @@
-import React, { useMemo } from "react";
-import { MicOff, VideoOff, User } from "lucide-react";
+import React, { useMemo, useState, useEffect } from "react";
+import { MicOff, VideoOff, User, ChevronLeft, ChevronRight } from "lucide-react";
 
 const VideoStage = ({
     showParticipantsGrid,
@@ -10,6 +10,7 @@ const VideoStage = ({
     setShowParticipants,
     setShowHandRaise,
     setShowMenuPage,
+    setShowParticipantsList, // Adding this from your new logic
     participantMembers,
     participantName,
     localVideoRef,
@@ -18,7 +19,110 @@ const VideoStage = ({
     roomPeers = {},
     handRaiseCount = 0,
 }) => {
-    // Determine the primary stream to focus on the center stage
+    // ==========================================
+    // 1. LIVE PARTICIPANTS DATA
+    // ==========================================
+    const allParticipants = useMemo(() => {
+        const list = [];
+        
+        // Local User
+        list.push({
+            id: "local-user",
+            name: `${participantName} (You)`,
+            isLocal: true,
+            stream: null,
+        });
+
+        // Remote Users with streams
+        remoteStreams.forEach((remote) => {
+            list.push({
+                id: remote.peerId,
+                name: roomPeers[remote.peerId]?.name || "Remote User",
+                isLocal: false,
+                stream: remote.stream
+            });
+        });
+
+        // Remote Users without streams yet
+        Object.keys(roomPeers).forEach((peerId) => {
+            if (!remoteStreams.some((r) => r.peerId === peerId)) {
+                list.push({
+                    id: peerId,
+                    name: roomPeers[peerId]?.name || "Remote User",
+                    isLocal: false,
+                    stream: null
+                });
+            }
+        });
+
+        return list;
+    }, [participantName, remoteStreams, roomPeers]);
+
+    // ==========================================
+    // 2. YOUR EXACT PAGINATION & ROW LOGIC
+    // ==========================================
+    const [currentPage, setCurrentPage] = useState(0);
+    const PAGE_SIZE = 9;
+
+    const totalPages = Math.max(1, Math.ceil(allParticipants.length / PAGE_SIZE));
+    const clampedPage = Math.min(currentPage, totalPages - 1);
+    const startIndex = clampedPage * PAGE_SIZE;
+    const endIndex = startIndex + PAGE_SIZE;
+    const pagedParticipants = allParticipants.slice(startIndex, endIndex);
+
+    const canGoLeft = clampedPage > 0;
+    const canGoRight = clampedPage < totalPages - 1;
+
+    useEffect(() => {
+        setCurrentPage((prev) => Math.min(prev, totalPages - 1));
+    }, [totalPages]);
+
+    const getParticipantInitials = (name) => {
+        if (!name) return "U";
+        const cleanName = name.replace(" (You)", ""); // Clean up "You" tag for initials
+        const parts = cleanName.trim().split(/\s+/);
+        if (parts.length > 1) return (parts[0][0] + parts[1][0]).toUpperCase();
+        return cleanName.substring(0, Math.min(2, cleanName.length)).toUpperCase();
+    };
+
+    const getParticipantTheme = (index) => {
+        const themes = [
+            "from-green-900 via-green-800 to-green-700",
+            "from-pink-900 via-pink-800 to-pink-700",
+            "from-blue-900 via-blue-800 to-blue-700",
+            "from-purple-900 via-purple-800 to-purple-700",
+            "from-orange-900 via-orange-800 to-orange-700",
+            "from-teal-900 via-teal-800 to-teal-700",
+        ];
+        return themes[index % themes.length];
+    };
+
+    const getRowSizes = (count) => {
+        if (count <= 0) return [];
+        if (count <= 4) return [count];
+        if (count === 5) return [2, 3];
+        if (count === 6) return [3, 3];
+        if (count === 7) return [3, 4];
+        if (count === 8) return [4, 4];
+        return [4, 5];
+    };
+
+    const getParticipantRows = (items) => {
+        const sizes = getRowSizes(items.length);
+        const rows = [];
+        let start = 0;
+
+        sizes.forEach((size) => {
+            rows.push(items.slice(start, start + size));
+            start += size;
+        });
+
+        return rows;
+    };
+
+    const participantRows = getParticipantRows(pagedParticipants);
+
+    // Primary remote stream for center stage (if not in grid view)
     const primaryRemoteStream = useMemo(() => {
         return remoteStreams.length > 0 ? remoteStreams[0] : null;
     }, [remoteStreams]);
@@ -33,236 +137,198 @@ const VideoStage = ({
                       : "w-full"
             }`}
         >
-            {/* ================= PARTICIPANTS GRID ================= */}
             {showParticipantsGrid ? (
-                <div className="w-full h-full bg-[#0f172a] p-6 overflow-y-auto animate-fade-in">
-                    {/* TOP BAR */}
+                // ================= YOUR LIST VIEW =================
+                <div className="w-full h-full bg-[#0f172a] p-6 overflow-y-auto">
                     <div className="flex items-center justify-between mb-6">
                         <h2 className="text-white text-2xl font-bold tracking-tight">
-                            All Participants ({participantMembers.length})
+                            All Participants
                         </h2>
 
                         <button
-                            onClick={() => setShowParticipantsGrid(false)}
+                            onClick={() => {
+                                setShowParticipantsGrid(false);
+                                setShowParticipants(false);
+                                setShowHandRaise(false);
+                                setShowMenuPage(false);
+                                if (setShowParticipantsList) setShowParticipantsList(false);
+                            }}
                             className="bg-white text-slate-700 px-5 py-2 rounded-xl text-sm font-semibold hover:bg-slate-100 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 shadow-sm cursor-pointer"
                         >
                             Back to Meeting
                         </button>
                     </div>
 
-                    {/* GRID */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
-                        {participantMembers.map((member, index) => (
+                    <div className="space-y-3">
+                        {allParticipants.map((member, index) => (
                             <div
-                                key={index}
-                                className="relative h-[240px] rounded-[24px] overflow-hidden border border-slate-800 bg-slate-900 hover:border-blue-500 hover:scale-[1.02] hover:shadow-[0_8px_24px_rgba(0,0,0,0.2)] transition-all duration-300 cursor-pointer group"
+                                key={`${member.id}-${index}`}
+                                className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-white"
                             >
-                                <img
-                                    src={`https://randomuser.me/api/portraits/${
-                                        index % 2 === 0 ? "men" : "women"
-                                    }/${index + 20}.jpg`}
-                                    alt={member}
-                                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                />
-
-                                <div className="absolute inset-0 bg-black/10 group-hover:bg-black/5 transition-colors duration-300"></div>
-
-                                <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
-                                    <div className="bg-black/50 backdrop-blur-xl px-3 py-1 rounded-xl text-white text-sm font-semibold border border-white/5 shadow-md">
-                                        {member}
-                                    </div>
-
-                                    <div className="bg-black/50 backdrop-blur-xl p-2 rounded-full border border-white/5 shadow-md">
-                                        <MicOff size={15} className="text-white/80" />
-                                    </div>
-                                </div>
+                                <span className="font-semibold text-[15px]">{member.name}</span>
+                                <span className="text-white/40 text-sm">
+                                    {member.isLocal ? "You" : "Participant"}
+                                </span>
                             </div>
                         ))}
                     </div>
                 </div>
             ) : (
-                <>
-                    {/* ================= MAIN CENTER STAGE AREA ================= */}
-                    <div className="absolute inset-0 w-full h-full bg-slate-900 flex items-center justify-center">
-                        {primaryRemoteStream ? (
-                            /* Render Active Remote Speaker on Center Stage */
-                            <div className="w-full h-full relative">
-                                <video
-                                    autoPlay
-                                    playsInline
-                                    ref={(el) => {
-                                        if (el && el.srcObject !== primaryRemoteStream.stream) {
-                                            el.srcObject = primaryRemoteStream.stream;
-                                        }
-                                    }}
-                                    className="w-full h-full object-cover"
-                                />
-                                <div className="absolute bottom-7 left-7 bg-black/60 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/10 z-20">
-                                    <p className="text-white text-xl font-bold tracking-tight">
-                                        {roomPeers[primaryRemoteStream.peerId]?.name || "Remote User"}
-                                    </p>
-                                </div>
-                            </div>
-                        ) : (
-                            /* Fallback: Render Local Video Stream in Center Stage if Solo */
-                            <div className="w-full h-full relative flex items-center justify-center bg-slate-900">
-                                {isVideoOn ? (
-                                    <video
-                                        ref={(el) => {
-                                            if (el && localVideoRef?.current && el.srcObject !== localVideoRef.current.srcObject) {
-                                                el.srcObject = localVideoRef.current.srcObject;
-                                            }
-                                        }}
-                                        autoPlay
-                                        muted
-                                        playsInline
-                                        className="w-full h-full object-cover"
-                                    />
-                                ) : (
-                                    <div className="flex flex-col items-center gap-4 text-slate-500 animate-fade-in">
-                                        <div className="w-24 h-24 rounded-full bg-slate-800 flex items-center justify-center border border-slate-700 shadow-inner">
-                                            <User size={44} className="text-slate-400" />
-                                        </div>
-                                        <p className="text-sm font-medium tracking-wide text-slate-400">
-                                            Camera is turned off
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="absolute inset-0 bg-black/5 pointer-events-none"></div>
-
-                    {/* ================= TOP RIGHT OVERLAYS ================= */}
-                    <div className="absolute top-5 right-5 flex flex-col items-end gap-4 z-40">
-                        {/* PARTICIPANTS OVERLAY BUTTON */}
-                        <button
-                            onClick={() => {
-                                setShowParticipants(!showParticipants);
-                                setShowHandRaise(false);
-                                setShowMenuPage(false);
-                            }}
-                            className="relative w-[96px] h-[40px] hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer group"
-                        >
-                            <img
-                                src="https://randomuser.me/api/portraits/women/65.jpg"
-                                alt=""
-                                className="absolute left-0 top-0 w-10 h-10 rounded-[12px] border-2 border-white object-cover shadow-md group-hover:-translate-x-1 transition-transform duration-300"
-                            />
-                            <img
-                                src="https://randomuser.me/api/portraits/men/60.jpg"
-                                alt=""
-                                className="absolute left-7 top-0 w-10 h-10 rounded-[12px] border-2 border-white object-cover shadow-md transition-transform duration-300"
-                            />
-                            <div className="absolute left-[56px] top-0 w-10 h-10 rounded-[12px] border-2 border-white bg-[#ACBFFF] flex items-center justify-center shadow-md group-hover:translate-x-1 transition-transform duration-300">
-                                <span className="text-[12px] font-semibold text-[#394C84]">
-                                    +{participantMembers.length > 2 ? participantMembers.length - 2 : 0}
-                                </span>
-                            </div>
-                        </button>
-
-                        {/* HAND RAISE OVERLAY */}
-                        {true && (
-                            <div className="flex items-center gap-2 animate-fade-in">
-                                <button
-                                    onClick={() => {
-                                        setShowHandRaise(!showHandRaise);
-                                        setShowParticipants(false);
-                                        setShowMenuPage(false);
-                                    }}
-                                    className="bg-white hover:bg-yellow-50 h-[38px] px-4 rounded-[22px] flex items-center justify-center shadow-lg border border-yellow-200 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer gap-2"
+                // ================= YOUR EXACT GRID VIEW DESIGN =================
+                <div className="relative w-full h-full p-4 bg-[#0f172a]">
+                    <div className="relative w-full h-full overflow-hidden rounded-[28px]">
+                        <div className="w-full h-full px-16 py-4 flex flex-col gap-4">
+                            {participantRows.map((row, rowIndex) => (
+                                <div
+                                    key={rowIndex}
+                                    className={`flex gap-4 flex-1 ${
+                                        ((participantRows[0]?.length === 2 &&
+                                            participantRows[1]?.length === 3) ||
+                                            (participantRows[0]?.length === 3 &&
+                                                participantRows[1]?.length === 4)) &&
+                                        rowIndex === 0
+                                            ? "justify-center"
+                                            : ""
+                                    }`}
                                 >
-                                    <span className="text-[18px] leading-none">✋</span>
-                                    <span id="hand-count" className="text-[15px] font-bold leading-none text-slate-800"
-                                        style={{
-                                            display: "inline-flex",
-                                            alignItems: "center",
-                                            justifyContent: "center",
-                                            minWidth: "20px",
-                                            background: "#fbbf24",
-                                            color: "#1e293b",
-                                            borderRadius: "999px",
-                                            padding: "2px 8px",
-                                            fontWeight: 800,
-                                            fontSize: "13px",
-                                            boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
-                                        }}
-                                    >
-                                        0
-                                    </span>
+                                    {row.map((member, index) => {
+                                        const globalIndex =
+                                            rowIndex === 0
+                                                ? index
+                                                : participantRows[0].length + index;
+
+                                        // Determine if video is active for this specific tile
+                                        const hasVideo = member.isLocal ? isVideoOn : !!member.stream;
+
+                                        return (
+                                            <div
+                                                key={`${member.id}-${index}`}
+                                                className={`relative rounded-[24px] overflow-hidden border border-white/10 bg-gradient-to-br ${getParticipantTheme(
+                                                    globalIndex,
+                                                )} shadow-xl ${
+                                                    ((participantRows[0]?.length === 2 &&
+                                                        participantRows[1]?.length === 3) ||
+                                                        (participantRows[0]?.length === 3 &&
+                                                            participantRows[1]?.length === 4)) &&
+                                                    rowIndex === 0
+                                                        ? ""
+                                                        : "flex-1"
+                                                }`}
+                                                style={
+                                                    participantRows[0]?.length === 2 &&
+                                                    participantRows[1]?.length === 3 &&
+                                                    rowIndex === 0
+                                                        ? { flex: "0 0 30%" }
+                                                        : participantRows[0]?.length === 3 &&
+                                                          participantRows[1]?.length === 4 &&
+                                                          rowIndex === 0
+                                                        ? { flex: "0 0 23%" }
+                                                        : {}
+                                                }
+                                            >
+                                                {/* ================= LIVE VIDEO INJECTION ================= */}
+                                                {hasVideo ? (
+                                                    member.isLocal ? (
+                                                        <video
+                                                            autoPlay
+                                                            muted
+                                                            playsInline
+                                                            ref={(el) => {
+                                                                if (el && localVideoRef?.current && el.srcObject !== localVideoRef.current.srcObject) {
+                                                                    el.srcObject = localVideoRef.current.srcObject;
+                                                                }
+                                                            }}
+                                                            className="absolute inset-0 w-full h-full object-cover z-0"
+                                                        />
+                                                    ) : (
+                                                        <video
+                                                            autoPlay
+                                                            playsInline
+                                                            ref={(el) => {
+                                                                if (el && el.srcObject !== member.stream) {
+                                                                    el.srcObject = member.stream;
+                                                                }
+                                                            }}
+                                                            className="absolute inset-0 w-full h-full object-cover z-0"
+                                                        />
+                                                    )
+                                                ) : (
+                                                    /* ================= YOUR INITIALS BUBBLE ================= */
+                                                    <>
+                                                        <div
+                                                            className="absolute inset-0 opacity-40 z-0"
+                                                            style={{
+                                                                background:
+                                                                    "radial-gradient(circle at center, rgba(255,255,255,0.12) 0%, transparent 70%)",
+                                                            }}
+                                                        />
+                                                        <div className="absolute inset-0 flex items-center justify-center z-10">
+                                                            <div className="w-24 h-24 rounded-full bg-black/15 flex items-center justify-center backdrop-blur-sm">
+                                                                <span className="text-white text-5xl font-medium">
+                                                                    {getParticipantInitials(member.name)}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </>
+                                                )}
+
+                                                {/* ================= OVERLAYS ================= */}
+                                                <div className="absolute top-3 right-3 bg-black/40 rounded-full p-2 z-20">
+                                                    <MicOff size={16} className="text-white" />
+                                                </div>
+
+                                                <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/70 to-transparent z-20">
+                                                    <p className="text-white font-semibold">
+                                                        {member.name}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* ================= YOUR FLOATING PAGINATION ================= */}
+                        {allParticipants.length > PAGE_SIZE && (
+                            <>
+                                <button
+                                    onClick={() =>
+                                        canGoLeft &&
+                                        setCurrentPage((p) => Math.max(0, p - 1))
+                                    }
+                                    aria-label="Previous participants"
+                                    className={`absolute left-4 top-1/2 -translate-y-1/2 z-30 w-12 h-12 rounded-full flex items-center justify-center shadow-lg border transition-all duration-200 ${
+                                        canGoLeft
+                                            ? "bg-black text-white border-black hover:scale-105"
+                                            : "bg-slate-200 text-slate-400 border-slate-300 cursor-not-allowed"
+                                    }`}
+                                    disabled={!canGoLeft}
+                                >
+                                    <ChevronLeft size={22} />
                                 </button>
 
-                                <div className="w-10 h-10 rounded-[12px] border-2 border-white bg-[#ACBFFF] flex items-center justify-center shadow-md">
-                                    <span className="text-[16px] text-[#394C84]">👤</span>
-                                </div>
-                            </div>
+                                <button
+                                    onClick={() =>
+                                        canGoRight &&
+                                        setCurrentPage((p) =>
+                                            Math.min(totalPages - 1, p + 1),
+                                        )
+                                    }
+                                    aria-label="Next participants"
+                                    className={`absolute right-4 top-1/2 -translate-y-1/2 z-30 w-12 h-12 rounded-full flex items-center justify-center shadow-lg border transition-all duration-200 ${
+                                        canGoRight
+                                            ? "bg-black text-white border-black hover:scale-105"
+                                            : "bg-slate-200 text-slate-400 border-slate-300 cursor-not-allowed"
+                                    }`}
+                                    disabled={!canGoRight}
+                                >
+                                    <ChevronRight size={22} />
+                                </button>
+                            </>
                         )}
                     </div>
-
-                    {/* ONLY SHOW SUB-LABEL IF NOT SHOWING REMOTE USER IN CENTER */}
-                    {!primaryRemoteStream && (
-                        <h1 className="absolute bottom-7 left-7 text-white text-[38px] font-extrabold tracking-tight drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)] z-20 pointer-events-none">
-                            {participantName} (You)
-                        </h1>
-                    )}
-
-                    {/* ================= FLOATING CORNER PICTURE-IN-PICTURE TILES ================= */}
-                    <div className="absolute bottom-5 right-5 z-20 space-y-3 max-h-[80%] overflow-y-auto p-1 pointer-events-auto">
-                        {/* Always show small self-view if a remote user is taking up the center stage */}
-                        {primaryRemoteStream && (
-                            <div className="relative w-[220px] h-[140px] rounded-[24px] overflow-hidden bg-black/90 border border-white/10 shadow-2xl transition-all">
-                                <video
-                                    ref={localVideoRef}
-                                    autoPlay
-                                    muted
-                                    playsInline
-                                    className="w-full h-full object-cover"
-                                />
-                                <div className="absolute left-3 bottom-3 bg-black/60 px-2 py-0.5 rounded-lg text-[11px] font-semibold text-white">
-                                    You
-                                </div>
-                                {!isVideoOn && (
-                                    <div className="absolute inset-0 bg-slate-900 flex flex-col items-center justify-center text-slate-400">
-                                        <VideoOff size={20} />
-                                        <span className="text-[10px] mt-1">Camera off</span>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Render all other peer streams on the right side stack */}
-                        {remoteStreams.length > 0 && (
-                            <div className="flex flex-col gap-2 w-[220px]">
-                                {remoteStreams.map((remote, idx) => {
-                                    // Skip the first one if it's already highlighted in the center view
-                                    if (idx === 0) return null;
-
-                                    return (
-                                        <div
-                                            key={remote.peerId}
-                                            className="relative w-full h-[120px] rounded-[20px] overflow-hidden bg-black/90 border border-white/10 shadow-lg"
-                                        >
-                                            <video
-                                                autoPlay
-                                                playsInline
-                                                ref={(el) => {
-                                                    if (el && el.srcObject !== remote.stream) {
-                                                        el.srcObject = remote.stream;
-                                                    }
-                                                }}
-                                                className="w-full h-full object-cover"
-                                            />
-                                            <div className="absolute left-3 bottom-3 bg-black/70 px-2 py-1 rounded-lg text-[10px] font-medium text-white border border-white/5">
-                                                {roomPeers[remote.peerId]?.name || "Remote User"}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
-                </>
+                </div>
             )}
         </div>
     );

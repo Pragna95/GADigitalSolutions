@@ -4,6 +4,20 @@ from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from .services import update_audio_state, add_participant_to_cache, remove_participant_from_cache
 from .models import ChatMessage, Meeting, User
 
+# ==========================================
+# In-Memory Room State (From Friend's Code)
+# ==========================================
+ROOMS = {}
+
+def get_room(room_name):
+    if room_name not in ROOMS:
+        ROOMS[room_name] = {
+            "channels": {},
+            "names": {},
+        }
+    return ROOMS[room_name]
+
+
 class MeetingConsumer(AsyncJsonWebsocketConsumer):
 
     async def connect(self):
@@ -77,6 +91,19 @@ class MeetingConsumer(AsyncJsonWebsocketConsumer):
                     {"type": "hand_count_broadcast", "count": current_count},
                 )
 
+        # NEW: Sync grid pages across all users
+        elif message_type == "grid_page_sync":
+            page_num = content.get("page")
+            if user_id is not None and page_num is not None:
+                await self.channel_layer.group_send(
+                    self.room_group_name,
+                    {
+                        "type": "grid_page_broadcast",
+                        "page": page_num,
+                        "sender_user_id": user_id
+                    }
+                )
+
         message = content.copy()
         message["sender_channel_name"] = self.channel_name
 
@@ -101,11 +128,19 @@ class MeetingConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json(event["data"])
 
     async def count_update(self, event):
-        """Forward countUpdate broadcast to this WebSocket client."""
         await self.send_json(event["data"])
 
     async def hand_count_broadcast(self, event):
         await self.send_json({"type": "hand_count_update", "count": event["count"]})
+
+    # NEW: Broadcast the grid page update to the clients
+    async def grid_page_broadcast(self, event):
+        await self.send_json({
+            "type": "grid_page_sync",
+            "page": event["page"],
+            "sender_user_id": event["sender_user_id"]
+        })
+
 
 class ParticipantConsumer(AsyncJsonWebsocketConsumer):
 
@@ -116,7 +151,6 @@ class ParticipantConsumer(AsyncJsonWebsocketConsumer):
                 await self.close()
                 return
 
-            # Resolve meeting_id to UUID if it is a meeting code
             from .MeetingViews import get_meeting_by_identifier
             meeting = await sync_to_async(get_meeting_by_identifier)(self.meeting_id)
             if meeting:
@@ -125,6 +159,11 @@ class ParticipantConsumer(AsyncJsonWebsocketConsumer):
                 self.meeting_uuid = self.meeting_id
 
             self.room_group_name = f"meeting_{self.meeting_uuid}"
+            
+            # --- MERGED FROM FRIEND'S CODE ---
+            get_room(self.room_group_name)
+            # ---------------------------------
+
             await self.channel_layer.group_add(
                 self.room_group_name,
                 self.channel_name
@@ -135,6 +174,19 @@ class ParticipantConsumer(AsyncJsonWebsocketConsumer):
 
     async def disconnect(self, close_code):
         try:
+            # --- MERGED FROM FRIEND'S CODE ---
+            room = get_room(self.room_group_name)
+            removed_name = room["channels"].pop(self.channel_name, None)
+
+            if removed_name and room["names"].get(removed_name) == self.channel_name:
+                del room["names"][removed_name]
+
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {"type": "broadcast_participants"}
+            )
+            # ---------------------------------
+
             await self.channel_layer.group_discard(
                 self.room_group_name,
                 self.channel_name
@@ -142,8 +194,37 @@ class ParticipantConsumer(AsyncJsonWebsocketConsumer):
         except Exception:
             pass
 
+    # --- MERGED FROM FRIEND'S CODE ---
+    async def receive_json(self, content):
+        if content.get("type") == "participant_join":
+            name = str(content.get("name", "")).strip() or "User"
+            room = get_room(self.room_group_name)
+
+            # If the same name reconnects from another browser/tab,
+            # remove the old channel first so the new one stays active.
+            name = name + "_" + self.channel_name[-5:]
+
+            room["channels"][self.channel_name] = name
+            room["names"][name] = self.channel_name
+
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {"type": "broadcast_participants"}
+            )
+
+    async def broadcast_participants(self, event):
+        room = get_room(self.room_group_name)
+        participants = [
+            {"id": channel_name, "name": name}
+            for channel_name, name in room["channels"].items()
+        ]
+        await self.send_json({
+            "type": "participant_list",
+            "participants": participants
+        })
+    # ---------------------------------
+
     async def signal_message(self, event):
-        """Forward hand_raise and other signals to participant list"""
         message = event["message"]
         await self.send_json(message)
 
@@ -151,7 +232,6 @@ class ParticipantConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json(event["data"])
 
     async def count_update(self, event):
-        """Forward countUpdate broadcast to this WebSocket client."""
         await self.send_json(event["data"])
 
     async def hand_count_broadcast(self, event):
@@ -160,10 +240,9 @@ class ParticipantConsumer(AsyncJsonWebsocketConsumer):
             "count": event["count"]
         })
         
-from channels.generic.websocket import AsyncJsonWebsocketConsumer
+
 @sync_to_async
 def save_chat_message(meeting_id, user_id, message):
-
     meeting = Meeting.objects.get(meeting_code=meeting_id)
     user = User.objects.get(id=user_id)
 
@@ -172,6 +251,8 @@ def save_chat_message(meeting_id, user_id, message):
         user=user,
         message=message,
     )
+
+
 class ChatConsumer(AsyncJsonWebsocketConsumer):
 
     async def connect(self):
@@ -196,11 +277,11 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         message = content.get("message")
 
         if user_id and message:
-         await save_chat_message(
-          self.meeting_id,
-          user_id,
-          message
-       )
+            await save_chat_message(
+                self.meeting_id,
+                user_id,
+                message
+            )
      
         await self.channel_layer.group_send(
             self.room_group_name,
