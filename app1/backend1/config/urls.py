@@ -12,6 +12,9 @@ def api_root(request):
             '/api/auth/register/',
             '/api/auth/logout/',
             '/api/auth/user/',
+            '/api/chat/rooms/',
+            '/api/chat/rooms/<room_id>/messages/',
+            '/api/meetings/',
         ]
     })
 
@@ -19,4 +22,6 @@ urlpatterns = [
     path('', api_root, name='api_root'),
     path('admin/', admin.site.urls),
     path('api/auth/', include('authentication.urls')),
+    path('api/chat/', include('chat.urls')),
+    path('api/meetings/', include('chat.meeting_urls')),
 ]

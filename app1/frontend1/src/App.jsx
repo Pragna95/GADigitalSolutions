@@ -89,14 +89,19 @@ const DashboardUI = () => (
   </DashboardLayout>
 );
 
-const Messaging = () => (
-  <DashboardLayout bg="bg-[#F8F9FB]">
-    <main className="mx-auto flex h-full w-full max-w-[1329px] flex-1 gap-6 overflow-hidden p-4 animate-scale-in">
-      <ChatList />
-      <ChatWindow />
-    </main>
-  </DashboardLayout>
-);
+const Messaging = () => {
+  const [selectedRoom, setSelectedRoom] = React.useState(null);
+
+  return (
+    <DashboardLayout bg="bg-[#F8F9FB]">
+      <main className="mx-auto flex h-full w-full max-w-[1329px] flex-1 gap-6 overflow-hidden p-4 animate-scale-in">
+        <ChatList selectedRoom={selectedRoom} onSelectRoom={setSelectedRoom} />
+        <ChatWindow selectedRoom={selectedRoom} />
+      </main>
+    </DashboardLayout>
+  );
+};
+
 
 /* -----------------------------
    App

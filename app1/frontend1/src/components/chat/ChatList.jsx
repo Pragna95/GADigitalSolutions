@@ -1,21 +1,49 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Bell, Plus, Search, Hash } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import api from "../../services/api";
 
-const channels = ["General", "UX & UI Team", "Meme", "Meme"];
-
-const chats = [
-  { id: 1, name: "GA Domes",       time: "10:30 AM", sub: "Status updated", color: "from-blue-400 to-indigo-500" },
-  { id: 2, name: "Sky Towers",     time: "11:00 AM", sub: "📄 File.ext",    color: "from-green-400 to-teal-500" },
-  { id: 3, name: "Forest Retreat", time: "12:00 PM", sub: "📷 1 photo",     color: "from-amber-400 to-orange-500" },
-  { id: 4, name: "Mountain Peaks", time: "12:30 PM", sub: "Arjunchello",    color: "from-rose-400 to-pink-500" },
-  { id: 5, name: "Urban Jungle",   time: "1:05 PM",  sub: "🎥 1 video",    color: "from-violet-400 to-purple-500" },
+const colors = [
+  "from-blue-400 to-indigo-500",
+  "from-green-400 to-teal-500",
+  "from-amber-400 to-orange-500",
+  "from-rose-400 to-pink-500",
+  "from-violet-400 to-purple-500"
 ];
 
-export default function ChatList() {
-  const [activeChannel, setActiveChannel] = useState("General");
+export default function ChatList({ selectedRoom, onSelectRoom }) {
+  const [rooms, setRooms] = useState([]);
   const [channelSearch, setChannelSearch] = useState("");
   const [chatSearch, setChatSearch] = useState("");
+
+  useEffect(() => {
+    const fetchRooms = async () => {
+      try {
+        const res = await api.get("/api/chat/rooms/");
+        setRooms(res.data);
+        if (!selectedRoom && res.data.length > 0) {
+          onSelectRoom(res.data[0]);
+        }
+      } catch (err) {
+        console.error("Error fetching rooms:", err);
+      }
+    };
+    fetchRooms();
+  }, [selectedRoom, onSelectRoom]);
+
+  // Distinguish channels vs general chats
+  const channels = rooms.filter(r => ["general", "ux-ui-team", "meme"].includes(r.name));
+  const chats = rooms.filter(r => !["general", "ux-ui-team", "meme"].includes(r.name));
+
+  const formatTime = (isoString) => {
+    if (!isoString) return "";
+    try {
+      const date = new Date(isoString);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return "";
+    }
+  };
 
   return (
     <div className="w-full max-w-[324px] md:w-[324px] h-[824px] flex flex-col bg-white border border-gray-100 rounded-[12px] overflow-y-auto flex-shrink-0 shadow-[0_4px_20px_rgba(0,0,0,0.01)] transition-all duration-300">
@@ -60,19 +88,19 @@ export default function ChatList() {
 
         <div className="flex flex-col gap-1 overflow-y-auto max-h-[170px]">
           {channels
-            .filter((c) => c.toLowerCase().includes(channelSearch.toLowerCase()))
-            .map((c, i) => (
+            .filter((c) => c.display_name.toLowerCase().includes(channelSearch.toLowerCase()))
+            .map((c) => (
               <button
-                key={i}
-                onClick={() => setActiveChannel(c)}
+                key={c.id}
+                onClick={() => onSelectRoom(c)}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-all duration-200 text-left w-full cursor-pointer hover:translate-x-1 ${
-                  activeChannel === c
+                  selectedRoom?.id === c.id
                     ? "bg-blue-50 text-[#1D4ED8] font-bold border-l-2 border-[#1D4ED8] rounded-l-none"
                     : "text-[#475569] hover:bg-gray-50 hover:text-gray-900"
                 }`}
               >
                 <Hash className="w-3.5 h-3.5" />
-                {c}
+                {c.display_name}
               </button>
             ))}
         </div>
@@ -102,26 +130,37 @@ export default function ChatList() {
 
         <div className="flex flex-col gap-1.5 overflow-y-auto max-h-[280px]">
           {chats
-            .filter((c) => c.name.toLowerCase().includes(chatSearch.toLowerCase()))
-            .map((chat) => (
-              <button
-                key={chat.id}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50/80 hover:scale-[1.01] hover:shadow-[0_2px_8px_rgba(0,0,0,0.03)] active:scale-[0.99] border border-transparent hover:border-gray-100/50 transition-all duration-200 text-left w-full cursor-pointer"
-              >
-                <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${chat.color} flex-shrink-0 shadow-[0_2px_6px_rgba(0,0,0,0.08)]`} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-gray-800 truncate">
-                      {chat.name}
-                    </span>
-                    <span className="text-xs text-gray-400 flex-shrink-0 ml-1">
-                      {chat.time}
-                    </span>
+            .filter((c) => c.display_name.toLowerCase().includes(chatSearch.toLowerCase()))
+            .map((chat, idx) => {
+              const color = colors[idx % colors.length];
+              const lastMsgText = chat.last_message ? chat.last_message.content : "No messages yet";
+              const lastMsgTime = chat.last_message ? formatTime(chat.last_message.timestamp) : "";
+
+              return (
+                <button
+                  key={chat.id}
+                  onClick={() => onSelectRoom(chat)}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50/80 hover:scale-[1.01] hover:shadow-[0_2px_8px_rgba(0,0,0,0.03)] active:scale-[0.99] border transition-all duration-200 text-left w-full cursor-pointer ${
+                    selectedRoom?.id === chat.id
+                      ? "bg-blue-50/50 border-blue-100 shadow-sm"
+                      : "border-transparent hover:border-gray-100/50"
+                  }`}
+                >
+                  <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${color} flex-shrink-0 shadow-[0_2px_6px_rgba(0,0,0,0.08)]`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold text-gray-800 truncate">
+                        {chat.display_name}
+                      </span>
+                      <span className="text-xs text-gray-400 flex-shrink-0 ml-1">
+                        {lastMsgTime}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 truncate">{lastMsgText}</p>
                   </div>
-                  <p className="text-xs text-gray-500 truncate">{chat.sub}</p>
-                </div>
-              </button>
-            ))}
+                </button>
+              );
+            })}
         </div>
       </div>
     </div>
