@@ -6,7 +6,7 @@ const Sidebar = ({
     showParticipants, setShowParticipants,
     showMenuPage, setShowMenuPage,
     setShowParticipantsGrid,
-    handRaiseMembers, participantMembers
+    handRaiseMembers = [], participantMembers = []
 }) => {
     const [activeMenu, setActiveMenu] = useState("chat");
     const [message, setMessage] = useState("");
@@ -63,7 +63,7 @@ const Sidebar = ({
                                 <p className="text-sm font-medium">No hands raised yet</p>
                             </div>
                         ) : (
-                            (showHandRaise ? handRaiseMembers : participantMembers.slice(0, 8)).map((member, index) => (
+                            (showHandRaise ? handRaiseMembers : (participantMembers || []).slice(0, 8)).map((member, index) => (
                                 <div key={index} className="border border-slate-100 rounded-xl px-3 py-2 flex items-center gap-3 hover:bg-slate-50 cursor-pointer">
                                     {showHandRaise ? (
                                         <div className="w-10 h-10 rounded-[12px] bg-[#ACBFFF] flex items-center justify-center shadow-md shrink-0 relative">
