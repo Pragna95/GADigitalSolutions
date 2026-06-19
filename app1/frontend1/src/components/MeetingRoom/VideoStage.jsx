@@ -208,10 +208,17 @@ const VideoStage = ({
                                 <span className="text-[18px] leading-none">✋</span>
                                 <span id="hand-count" className="text-[15px] font-bold leading-none text-slate-800"
                                     style={{
-                                        display: "inline-flex", alignItems: "center", justifyContent: "center",
-                                        minWidth: "20px", background: "#fbbf24", color: "#1e293b",
-                                        borderRadius: "999px", padding: "2px 8px", fontWeight: 800,
-                                        fontSize: "13px", boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        minWidth: "20px",
+                                        background: "#fbbf24",
+                                        color: "#1e293b",
+                                        borderRadius: "999px",
+                                        padding: "2px 8px",
+                                        fontWeight: 800,
+                                        fontSize: "13px",
+                                        boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
                                     }}
                                 >
                                     {handRaiseCount}

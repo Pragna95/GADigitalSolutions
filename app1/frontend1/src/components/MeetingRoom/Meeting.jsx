@@ -71,11 +71,18 @@ const Meeting = () => {
     const displayName = participantName;
 
     // Unique user ID for screen share & participant tracking
-    const userId = useRef(
-        typeof crypto !== "undefined" && crypto.randomUUID
-            ? crypto.randomUUID()
-            : "00000000-0000-0000-0000-000000000000".replace(/0/g, () => (Math.random() * 16 | 0).toString(16))
-    ).current;
+    const getStoredUserId = () => {
+        const key = `huddle_user_id_${meetingId}`;
+        let id = localStorage.getItem(key);
+        if (!id) {
+            id = typeof crypto !== "undefined" && crypto.randomUUID
+                ? `u-${crypto.randomUUID().slice(0, 8)}`
+                : `u-${Math.random().toString(36).slice(2, 10)}`;
+            localStorage.setItem(key, id);
+        }
+        return id;
+    };
+    const userId = useRef(getStoredUserId()).current;
 
     const meetingLink = meetingId;
     const API_URL = "http://127.0.0.1:8000/api/meetings";
