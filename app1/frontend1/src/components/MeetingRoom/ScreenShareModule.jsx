@@ -113,14 +113,19 @@ export const ScreenShareModule = ({
         setRoomParticipants([{ userId, name: displayName, isSelf: true }, ...cleaned]);
 
         if (screenSharer) {
+            // FIXED: previously this only ADDED new ids from `cleaned` into
+            // screenViewers and never removed ids that were no longer present.
+            // That meant anyone who left while a screen share was active stayed
+            // stuck in the viewer tiles bar forever. `cleaned` is the
+            // authoritative current participant list from the server, so we now
+            // rebuild screenViewers strictly from it (still preserving any extra
+            // metadata already known about each viewer).
             setScreenViewers((prev) => {
-                const map = new Map(prev.map((v) => [String(v.userId), v]));
-                cleaned.forEach((p) => {
-                    if (!map.has(String(p.userId))) {
-                        map.set(String(p.userId), { userId: p.userId, name: p.name || p.userId });
-                    }
+                const prevByid = new Map(prev.map((v) => [String(v.userId), v]));
+                return cleaned.map((p) => {
+                    const existing = prevByid.get(String(p.userId));
+                    return existing || { userId: p.userId, name: p.name || p.userId };
                 });
-                return Array.from(map.values());
             });
         }
     };
@@ -368,6 +373,15 @@ export const ScreenShareModule = ({
         }
     }, [screenStream, isLocalScreenSharing]);
 
+    // FIXED: This used to run fetchCurrentSharer() once AND THEN set up a
+    // setInterval that re-ran it every 2000ms for as long as the component was
+    // mounted. Every open tab independently polled this endpoint every 2
+    // seconds — that's what was flooding your terminal with continuous GET
+    // requests to /current-screen-sharer/. This polling was also redundant:
+    // the "screen-share-start" / "screen-share-stop" WebSocket events handled
+    // in the socket.onmessage handler below already update `screenSharer` in
+    // real time. So we only need ONE fetch on mount (to catch a screen share
+    // that was already in progress before this tab joined) — no interval.
     useEffect(() => {
         let alive = true;
         const fetchCurrentSharer = async () => {
@@ -388,11 +402,10 @@ export const ScreenShareModule = ({
             }
         };
 
-        fetchCurrentSharer();
-        const interval = setInterval(fetchCurrentSharer, 2000);
+        fetchCurrentSharer(); // one-time check on mount only — no setInterval
+
         return () => {
             alive = false;
-            clearInterval(interval);
         };
     }, [meetingLink]);
 

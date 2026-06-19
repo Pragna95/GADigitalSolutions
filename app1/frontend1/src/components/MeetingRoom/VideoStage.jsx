@@ -18,6 +18,8 @@ const VideoStage = ({
     remoteStreams = [],
     roomPeers = {},
     handRaiseCount = 0,
+    liveParticipants = [],
+    userId,
 }) => {
     // ==========================================
     // 1. LIVE SYNCHRONIZED PARTICIPANTS
@@ -33,40 +35,23 @@ const VideoStage = ({
             stream: null,
         });
 
-        // Add Remote Users who have connected their video streams
-        remoteStreams.forEach((remote) => {
+        // Add Remote Users from the server-authoritative liveParticipants list
+        const remoteParticipants = liveParticipants.filter(p => p.user_id !== userId);
+
+        remoteParticipants.forEach((p) => {
+            const rStream = remoteStreams.find(r => roomPeers[r.peerId]?.user_id === p.user_id);
+            const cleanName = p.name ? p.name.replace(/_[a-zA-Z0-9]{5}$/, "") : "Remote User";
             list.push({
-                id: remote.peerId,
-                name: roomPeers[remote.peerId]?.name || "Remote User",
+                id: p.id || `remote-${p.user_id}`,
+                name: cleanName,
                 isLocal: false,
-                stream: remote.stream
+                stream: rStream ? rStream.stream : null
             });
         });
 
-        // Add Remote Users who are in the room but don't have video connected yet
-        Object.keys(roomPeers).forEach((peerId) => {
-            if (
-                roomPeers[peerId]?.name === participantName
-            ) {
-                return;
-            }
-            if (
-                peerId !== "local-user" &&
-                !remoteStreams.some((r) => r.peerId === peerId)
-            ) {
-                list.push({
-                    id: peerId,
-                    name: roomPeers[peerId]?.name || "Remote User",
-                    isLocal: false,
-                    stream: null
-                });
-            }
-        });
         console.log("ACTIVE PARTICIPANTS", list);
-console.log("ROOM PEERS", roomPeers);
-console.log("REMOTE STREAMS", remoteStreams);
         return list;
-    }, [participantName, remoteStreams, roomPeers]);
+    }, [participantName, userId, liveParticipants, remoteStreams, roomPeers]);
 
     // ==========================================
     // 2. PAGINATION & ROW LOGIC
