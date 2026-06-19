@@ -5,8 +5,9 @@ from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from .services import update_audio_state, add_participant_to_cache, remove_participant_from_cache
 from .models import ChatMessage, Meeting, User
 from django.core.cache import cache
+
 # ==========================================
-# In-Memory Room State (From Friend's Code)
+# In-Memory Room State
 # ==========================================
 ROOMS = {}
 
@@ -27,7 +28,6 @@ class MeetingConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
         self.meeting_id = self.scope["url_route"]["kwargs"]["meeting_id"]
         
-        # Resolve meeting_id to UUID if it is a meeting code
         from .MeetingViews import get_meeting_by_identifier
         meeting = await sync_to_async(get_meeting_by_identifier)(self.meeting_id)
         if meeting:
@@ -36,7 +36,6 @@ class MeetingConsumer(AsyncJsonWebsocketConsumer):
             self.meeting_uuid = self.meeting_id
 
         self.user_id = "pending_user"
-        # NOTE: this group is ONLY for MeetingConsumer (audio/WebRTC signaling) instances.
         self.room_group_name = f"meeting_{self.meeting_uuid}"
 
         global ACTIVE_MEETINGS
@@ -58,7 +57,6 @@ class MeetingConsumer(AsyncJsonWebsocketConsumer):
         if hasattr(self, "user_id") and self.user_id != "pending_user":
             await sync_to_async(remove_participant_from_cache)(self.meeting_uuid, self.user_id)
             from django.core.cache import cache
-            set_key = f"hands_{self.meeting_uuid}_set"
             set_key = f"meeting:{self.meeting_uuid}:raised_hands"
             raised_set = cache.get(set_key) or set()
             raised_set.discard(self.user_id)
@@ -92,7 +90,6 @@ class MeetingConsumer(AsyncJsonWebsocketConsumer):
             is_raised = content.get("is_raised")
             if user_id is not None and is_raised is not None:
                 from django.core.cache import cache
-                set_key = f"hands_{self.meeting_uuid}_set"
                 set_key = f"meeting:{self.meeting_uuid}:raised_hands"
                 raised_set = cache.get(set_key) or set()
                 if is_raised:
@@ -106,7 +103,6 @@ class MeetingConsumer(AsyncJsonWebsocketConsumer):
                     {"type": "hand_count_broadcast", "count": current_count},
                 )
 
-        # NEW: Sync grid pages across all users
         elif message_type == "grid_page_sync":
             page_num = content.get("page")
             if user_id is not None and page_num is not None:
@@ -148,7 +144,6 @@ class MeetingConsumer(AsyncJsonWebsocketConsumer):
     async def hand_count_broadcast(self, event):
         await self.send_json({"type": "hand_count_update", "count": event["count"]})
 
-    # NEW: Broadcast the grid page update to the clients
     async def grid_page_broadcast(self, event):
         await self.send_json({
             "type": "grid_page_sync",
@@ -173,13 +168,6 @@ class ParticipantConsumer(AsyncJsonWebsocketConsumer):
             else:
                 self.meeting_uuid = self.meeting_id
 
-            # FIXED: This group name was IDENTICAL to MeetingConsumer's group
-            # ("meeting_<uuid>"), so both consumer classes were sharing one
-            # channel-layer group. Whenever one class broadcast a message type
-            # that the other class had no handler method for, Channels raised
-            # an exception and silently killed that connection (causing random
-            # disconnects / unreliable participant updates). Using a separate,
-            # dedicated group name isolates the two consumers from each other.
             self.room_group_name = f"participants_{self.meeting_uuid}"
 
             await self.channel_layer.group_add(
@@ -214,7 +202,9 @@ class ParticipantConsumer(AsyncJsonWebsocketConsumer):
             pass
 
     async def receive_json(self, content):
-        if content.get("type") == "participant_join":
+        msg_type = content.get("type")
+
+        if msg_type == "participant_join":
             name = str(content.get("name", "")).strip() or "User"
             user_id = content.get("user_id", "")
 
@@ -237,6 +227,54 @@ class ParticipantConsumer(AsyncJsonWebsocketConsumer):
                 self.room_group_name,
                 {"type": "broadcast_participants"}
             )
+
+        # ✅ FIX: Hand raise ని ParticipantConsumer లో handle చేస్తున్నాం
+        # Meeting.jsx లో toggleHandRaise() ఇప్పుడు participantWsRef కి పంపుతుంది
+        # ఇక్కడ receive చేసి అందరికీ broadcast చేస్తున్నాం → అన్ని tabs లో ghost notification వస్తుంది
+        elif msg_type == "hand_raise":
+            user_id = content.get("user_id", "")
+            user_name = content.get("user_name", "")
+            is_raised = content.get("is_raised", False)
+
+            # Hand raise count కూడా update చేయాలి
+            from django.core.cache import cache
+            set_key = f"meeting:{self.meeting_uuid}:raised_hands"
+            raised_set = cache.get(set_key) or set()
+            if is_raised:
+                raised_set.add(user_id)
+            else:
+                raised_set.discard(user_id)
+            cache.set(set_key, raised_set, timeout=None)
+            current_count = len(raised_set)
+
+            # అందరికీ hand_raise broadcast చేయి (sender తో సహా)
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    "type": "hand_raise_broadcast",
+                    "user_id": user_id,
+                    "user_name": user_name,
+                    "is_raised": is_raised,
+                    "count": current_count,
+                }
+            )
+
+    async def hand_raise_broadcast(self, event):
+        """
+        అన్ని tabs కి hand_raise event పంపుతుంది.
+        Frontend లో pWs.onmessage లో data.type === 'hand_raise' handle చేస్తుంది.
+        """
+        await self.send_json({
+            "type": "hand_raise",
+            "user_id": event["user_id"],
+            "user_name": event["user_name"],
+            "is_raised": event["is_raised"],
+        })
+        # Count కూడా update పంపు
+        await self.send_json({
+            "type": "hand_count_update",
+            "count": event["count"],
+        })
 
     async def broadcast_participants(self, event):
         participants_key = f"participants_{self.meeting_uuid}"
@@ -274,18 +312,6 @@ class ParticipantConsumer(AsyncJsonWebsocketConsumer):
 class ScreenShareConsumer(AsyncJsonWebsocketConsumer):
     """
     Dedicated channel for the ScreenShareModule on the frontend.
-    Handles:
-      - "join"               -> registers this connection, sends back the current
-                                 viewer list, and tells everyone else this user joined.
-      - "offer"/"answer"/
-        "ice-candidate"/
-        "screen-share-start"/
-        "screen-share-stop"  -> relayed as-is to every other connection in the room.
-    On disconnect, removes this viewer and tells everyone else they left.
-
-    Uses its OWN group ("screen_<uuid>") and its OWN cache key
-    ("screen_participants_<uuid>") so it never double-counts against the main
-    "All Participants" grid, which is tracked separately by ParticipantConsumer.
     """
 
     async def connect(self):
@@ -338,7 +364,6 @@ class ScreenShareConsumer(AsyncJsonWebsocketConsumer):
             participants_key = f"screen_participants_{self.meeting_uuid}"
             participants = cache.get(participants_key) or {}
 
-            # Send the CURRENT list (everyone already here) only to this new client.
             await self.send_json({
                 "type": "participants",
                 "participants": [
@@ -347,7 +372,6 @@ class ScreenShareConsumer(AsyncJsonWebsocketConsumer):
                 ],
             })
 
-            # Now register this client and tell everyone ELSE that they joined.
             participants[self.channel_name] = {"user_id": self.user_id, "name": name}
             cache.set(participants_key, participants, timeout=None)
 
@@ -361,8 +385,6 @@ class ScreenShareConsumer(AsyncJsonWebsocketConsumer):
             )
             return
 
-        # Everything else (offer / answer / ice-candidate / screen-share-start /
-        # screen-share-stop) is just relayed as-is to every other connection.
         message = content.copy()
         message["sender_channel_name"] = self.channel_name
         await self.channel_layer.group_send(
