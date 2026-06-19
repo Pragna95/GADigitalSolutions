@@ -1,9 +1,10 @@
+from django.core.cache import cache
 import traceback
 from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from .services import update_audio_state, add_participant_to_cache, remove_participant_from_cache
 from .models import ChatMessage, Meeting, User
-
+from django.core.cache import cache
 # ==========================================
 # In-Memory Room State (From Friend's Code)
 # ==========================================
@@ -14,6 +15,7 @@ def get_room(room_name):
         ROOMS[room_name] = {
             "channels": {},
             "names": {},
+            "user_ids": {},
         }
     return ROOMS[room_name]
 
@@ -32,6 +34,7 @@ class MeetingConsumer(AsyncJsonWebsocketConsumer):
             self.meeting_uuid = self.meeting_id
 
         self.user_id = "pending_user"
+        # NOTE: this group is ONLY for MeetingConsumer (audio/WebRTC signaling) instances.
         self.room_group_name = f"meeting_{self.meeting_uuid}"
 
         await self.channel_layer.group_add(
@@ -158,11 +161,14 @@ class ParticipantConsumer(AsyncJsonWebsocketConsumer):
             else:
                 self.meeting_uuid = self.meeting_id
 
-            self.room_group_name = f"meeting_{self.meeting_uuid}"
-            
-            # --- MERGED FROM FRIEND'S CODE ---
-            get_room(self.room_group_name)
-            # ---------------------------------
+            # FIXED: This group name was IDENTICAL to MeetingConsumer's group
+            # ("meeting_<uuid>"), so both consumer classes were sharing one
+            # channel-layer group. Whenever one class broadcast a message type
+            # that the other class had no handler method for, Channels raised
+            # an exception and silently killed that connection (causing random
+            # disconnects / unreliable participant updates). Using a separate,
+            # dedicated group name isolates the two consumers from each other.
+            self.room_group_name = f"participants_{self.meeting_uuid}"
 
             await self.channel_layer.group_add(
                 self.room_group_name,
@@ -174,18 +180,16 @@ class ParticipantConsumer(AsyncJsonWebsocketConsumer):
 
     async def disconnect(self, close_code):
         try:
-            # --- MERGED FROM FRIEND'S CODE ---
-            room = get_room(self.room_group_name)
-            removed_name = room["channels"].pop(self.channel_name, None)
+            participants_key = f"participants_{self.meeting_uuid}"
+            participants = cache.get(participants_key) or {}
+            participants.pop(self.channel_name, None)
+            cache.set(participants_key, participants, timeout=None)
 
-            if removed_name and room["names"].get(removed_name) == self.channel_name:
-                del room["names"][removed_name]
-
+            print("LEFT:", len(participants), participants)
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {"type": "broadcast_participants"}
             )
-            # ---------------------------------
 
             await self.channel_layer.group_discard(
                 self.room_group_name,
@@ -194,35 +198,46 @@ class ParticipantConsumer(AsyncJsonWebsocketConsumer):
         except Exception:
             pass
 
-    # --- MERGED FROM FRIEND'S CODE ---
     async def receive_json(self, content):
         if content.get("type") == "participant_join":
             name = str(content.get("name", "")).strip() or "User"
-            room = get_room(self.room_group_name)
+            user_id = content.get("user_id", "")
 
-            # If the same name reconnects from another browser/tab,
-            # remove the old channel first so the new one stays active.
-            name = name + "_" + self.channel_name[-5:]
+            participants_key = f"participants_{self.meeting_uuid}"
+            from django.core.cache import cache
 
-            room["channels"][self.channel_name] = name
-            room["names"][name] = self.channel_name
+            print("CACHE BEFORE:", cache.get(participants_key))
+            participants = cache.get(participants_key) or {}
 
+            participants[self.channel_name] = {
+                "id": self.channel_name,
+                "name": name,
+                "user_id": user_id,
+            }
+
+            cache.set(participants_key, participants, timeout=None)
+            print("CACHE AFTER:", participants)
+            print("JOINED:", len(participants), participants)
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {"type": "broadcast_participants"}
             )
 
     async def broadcast_participants(self, event):
-        room = get_room(self.room_group_name)
-        participants = [
-            {"id": channel_name, "name": name}
-            for channel_name, name in room["channels"].items()
-        ]
+        participants_key = f"participants_{self.meeting_uuid}"
+        participants = cache.get(participants_key) or {}
+
+        print(
+            "SENDING TO:",
+            self.channel_name,
+            "COUNT:",
+            len(participants)
+        )
+
         await self.send_json({
             "type": "participant_list",
-            "participants": participants
+            "participants": list(participants.values())
         })
-    # ---------------------------------
 
     async def signal_message(self, event):
         message = event["message"]
@@ -239,7 +254,124 @@ class ParticipantConsumer(AsyncJsonWebsocketConsumer):
             "type": "hand_count_update",
             "count": event["count"]
         })
-        
+
+
+class ScreenShareConsumer(AsyncJsonWebsocketConsumer):
+    """
+    Dedicated channel for the ScreenShareModule on the frontend.
+    Handles:
+      - "join"               -> registers this connection, sends back the current
+                                 viewer list, and tells everyone else this user joined.
+      - "offer"/"answer"/
+        "ice-candidate"/
+        "screen-share-start"/
+        "screen-share-stop"  -> relayed as-is to every other connection in the room.
+    On disconnect, removes this viewer and tells everyone else they left.
+
+    Uses its OWN group ("screen_<uuid>") and its OWN cache key
+    ("screen_participants_<uuid>") so it never double-counts against the main
+    "All Participants" grid, which is tracked separately by ParticipantConsumer.
+    """
+
+    async def connect(self):
+        try:
+            self.meeting_id = self.scope["url_route"]["kwargs"].get("meeting_id")
+            if not self.meeting_id:
+                await self.close()
+                return
+
+            from .MeetingViews import get_meeting_by_identifier
+            meeting = await sync_to_async(get_meeting_by_identifier)(self.meeting_id)
+            self.meeting_uuid = str(meeting.id) if meeting else self.meeting_id
+
+            self.room_group_name = f"screen_{self.meeting_uuid}"
+            self.user_id = None
+
+            await self.channel_layer.group_add(self.room_group_name, self.channel_name)
+            await self.accept()
+        except Exception:
+            traceback.print_exc()
+
+    async def disconnect(self, close_code):
+        try:
+            if getattr(self, "user_id", None):
+                participants_key = f"screen_participants_{self.meeting_uuid}"
+                participants = cache.get(participants_key) or {}
+                participants.pop(self.channel_name, None)
+                cache.set(participants_key, participants, timeout=None)
+
+                await self.channel_layer.group_send(
+                    self.room_group_name,
+                    {
+                        "type": "participant_left_broadcast",
+                        "user_id": self.user_id,
+                        "sender_channel_name": self.channel_name,
+                    },
+                )
+
+            await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
+        except Exception:
+            traceback.print_exc()
+
+    async def receive_json(self, content):
+        msg_type = content.get("type")
+
+        if msg_type == "join":
+            self.user_id = content.get("userId")
+            name = content.get("name") or "User"
+
+            participants_key = f"screen_participants_{self.meeting_uuid}"
+            participants = cache.get(participants_key) or {}
+
+            # Send the CURRENT list (everyone already here) only to this new client.
+            await self.send_json({
+                "type": "participants",
+                "participants": [
+                    {"userId": v["user_id"], "name": v["name"]}
+                    for v in participants.values()
+                ],
+            })
+
+            # Now register this client and tell everyone ELSE that they joined.
+            participants[self.channel_name] = {"user_id": self.user_id, "name": name}
+            cache.set(participants_key, participants, timeout=None)
+
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    "type": "participant_joined_broadcast",
+                    "participant": {"userId": self.user_id, "name": name},
+                    "sender_channel_name": self.channel_name,
+                },
+            )
+            return
+
+        # Everything else (offer / answer / ice-candidate / screen-share-start /
+        # screen-share-stop) is just relayed as-is to every other connection.
+        message = content.copy()
+        message["sender_channel_name"] = self.channel_name
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {"type": "relay_message", "message": message},
+        )
+
+    async def relay_message(self, event):
+        message = event["message"]
+        if message.get("sender_channel_name") == self.channel_name:
+            return
+        message.pop("sender_channel_name", None)
+        await self.send_json(message)
+
+    async def participant_joined_broadcast(self, event):
+        if event.get("sender_channel_name") == self.channel_name:
+            return
+        await self.send_json({"type": "participant-joined", "participant": event["participant"]})
+
+    async def participant_left_broadcast(self, event):
+        if event.get("sender_channel_name") == self.channel_name:
+            return
+        await self.send_json({"type": "participant-left", "userId": event["user_id"]})
+
 
 @sync_to_async
 def save_chat_message(meeting_id, user_id, message):
@@ -282,7 +414,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
                 user_id,
                 message
             )
-     
+
         await self.channel_layer.group_send(
             self.room_group_name,
             {

@@ -96,10 +96,24 @@ const Meeting = () => {
 
     const [remoteStreams, setRemoteStreams] = useState([]);
     const [roomPeers, setRoomPeers] = useState({});
+    const [liveParticipants, setLiveParticipants] = useState([]);
     useEffect(() => {
-    console.log("ROOM PEERS:", roomPeers);
-    console.log("REMOTE STREAMS:", remoteStreams);
-}, [roomPeers, remoteStreams]);
+        console.log("ROOM PEERS:", roomPeers);
+        console.log("REMOTE STREAMS:", remoteStreams);
+    }, [roomPeers, remoteStreams]);
+
+    // FIXED: This was previously a duplicate, useless effect that just logged
+    // liveParticipants. The real bug was a *second* useEffect being called
+    // INSIDE the WebSocket onmessage callback below (not allowed in React —
+    // hooks must only be called at the top level of the component). That stray
+    // call threw an "Invalid hook call" error every time a participant_list
+    // message arrived, which got silently swallowed by the surrounding
+    // try/catch — so setLiveParticipants() right after it never ran. This
+    // top-level effect is the correct (and only) place to log liveParticipants.
+    useEffect(() => {
+        console.log("LIVE PARTICIPANTS STATE", participantName, liveParticipants.length, liveParticipants);
+    }, [liveParticipants, participantName]);
+
     const [localPeerId] = useState(() => `peer-${Math.random().toString(36).slice(2, 10)}`);
     const [isWebRtcReady, setIsWebRtcReady] = useState(false);
 
@@ -138,7 +152,7 @@ const Meeting = () => {
             delete pcRefs.current[peerId];
         }
         delete pendingIceCandidatesRef.current[peerId];
-        
+
         setRemoteStreams((prev) => prev.filter((item) => item.peerId !== peerId));
 
         if (isFullLeave) {
@@ -159,6 +173,7 @@ const Meeting = () => {
         socket.send(
             JSON.stringify({
                 sender: localPeerId,
+                user_id: userId,
                 meeting_id: meetingId,
                 name: participantName, // Crucial for instant box rendering
                 ...payload,
@@ -253,13 +268,16 @@ const Meeting = () => {
         // 🔥 FIX 1: Ignore server broadcast messages that don't have a sender!
         if (!message || !message.sender || message.sender === localPeerId) return;
 
-        const { type, sender, target, name } = message;
+        const { type, sender, target, name, user_id } = message;
         if (target && target !== localPeerId) return;
 
         // INSTANTLY add anyone we hear from to the visual grid
         setRoomPeers((prev) => {
             if (!prev[sender]) {
-                return { ...prev, [sender]: { name: name || `Guest ${sender.slice(-4)}` } };
+                return { ...prev, [sender]: { name: name || `Guest ${sender.slice(-4)}`, user_id: user_id } };
+            }
+            if (user_id && prev[sender].user_id !== user_id) {
+                return { ...prev, [sender]: { ...prev[sender], user_id: user_id } };
             }
             return prev;
         });
@@ -303,7 +321,7 @@ const Meeting = () => {
                 break;
         }
     };
-    
+
     // setup getUserMedia
     useEffect(() => {
         const setupMedia = async () => {
@@ -421,11 +439,12 @@ const Meeting = () => {
 
         pWs.onopen = () => {
             console.log("[ParticipantWS] Connected:", wsUrl);
-            
+
             // 🔥 CRITICAL FIX 1: Announce we joined so the backend counts us in the grid!
             pWs.send(JSON.stringify({
                 type: "participant_join",
-                name: participantName
+                name: participantName,
+                user_id: userId
             }));
         };
 
@@ -436,12 +455,12 @@ const Meeting = () => {
 
                 // 1. Maintain your existing Hand Raise Logic
                 if (
-    data.type === "hand_count_init" ||
-    data.type === "hand_count_update"
-) {
-    setLiveHandRaiseCount(data.count || 0);
-    return;
-}
+                    data.type === "hand_count_init" ||
+                    data.type === "hand_count_update"
+                ) {
+                    setLiveHandRaiseCount(data.count || 0);
+                    return;
+                }
                 if (data.type === "hand_raise") {
                     setHandRaisedUsers((prev) => {
                         const next = { ...prev };
@@ -475,14 +494,25 @@ const Meeting = () => {
 
                 // 🔥 CRITICAL FIX 2: Listen for the dynamic participant grid list!
                 if (msg.type === "participant_list") {
-                    // console.log("Live Grid Update from Backend:", msg.participants);
-                    console.log("PARTICIPANT LIST RECEIVED", msg.participants);
+                    // FIXED: removed an illegal `useEffect(...)` call that used to sit
+                    // right here. Calling a React hook inside a WebSocket callback is
+                    // invalid and was throwing an error that the surrounding try/catch
+                    // silently swallowed — which meant setLiveParticipants() below
+                    // NEVER actually ran. That was the entire reason the grid never
+                    // updated no matter how many tabs you opened.
+                    console.log(
+                        "PARTICIPANT LIST RECEIVED",
+                        participantName,
+                        msg.participants.length,
+                        msg.participants
+                    );
+                    setLiveParticipants(msg.participants);
                     setRoomPeers((prevPeers) => {
                         const next = { ...prevPeers };
-                        
+
                         // Grab the unique connection IDs of everyone currently live
                         const liveWsIds = msg.participants.map(p => p.id);
-                        
+
                         // Add any new users to the screen
                         msg.participants.forEach((p) => {
                             if (!next[p.id]) {
@@ -593,7 +623,7 @@ const Meeting = () => {
         if (!meetingId || !userId) return;
         try {
             await axios.post(
-                
+
                 `${API_URL}/participant/update/`,
                 {
                     user_id: userId,
@@ -796,6 +826,8 @@ const Meeting = () => {
                     remoteStreams={remoteStreams}
                     roomPeers={roomPeers}
                     handRaiseCount={liveHandRaiseCount}
+                    liveParticipants={liveParticipants}
+                    userId={userId}
                 />
 
                 <Sidebar
