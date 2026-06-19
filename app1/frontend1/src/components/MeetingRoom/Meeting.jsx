@@ -10,29 +10,6 @@ import VideoStage from "./VideoStage.jsx";
 import Sidebar from "./Sidebar.jsx";
 import ScreenShareModule from "./ScreenShareModule.jsx";
 
-const participantMembers = [
-    "Rahul",
-    "Anika",
-    "James",
-    "Priya",
-    "Michael",
-    "Fatima",
-    "Kevin",
-    "Sofia",
-    "John",
-    "Emma",
-    "David",
-    "Sophia",
-    "Chris",
-    "Olivia",
-    "Daniel",
-    "Mia",
-    "Ethan",
-    "Lily",
-    "Noah",
-    "Ava",
-];
-
 const Meeting = () => {
     const [showHandRaise, setShowHandRaise] = useState(false);
     const [showParticipants, setShowParticipants] = useState(false);
@@ -490,6 +467,27 @@ const Meeting = () => {
                     });
                 }
 
+                // ✅ Join/Leave ghost notifications — అన్ని tabs కి broadcast వస్తుంది
+                if (msg.type === "presence_event") {
+                    const presenceName = msg.name || "Someone";
+                    const isJoin = msg.event === "joined";
+                    const notifId = `presence-${msg.user_id}-${Date.now()}`;
+                    setHandRaiseNotifications((prev) => [
+                        ...prev,
+                        {
+                            id: notifId,
+                            uid: `presence-${msg.user_id}`,
+                            name: presenceName,
+                            isPresence: true,
+                            presenceType: isJoin ? "joined" : "left",
+                        }
+                    ]);
+                    setTimeout(() => {
+                        setHandRaiseNotifications((prev) => prev.filter((n) => n.id !== notifId));
+                    }, 4000);
+                    return;
+                }
+
                 if (msg.type === "participant_list") {
                     console.log(
                         "PARTICIPANT LIST RECEIVED",
@@ -746,16 +744,34 @@ const Meeting = () => {
                 {handRaiseNotifications.map((notif) => (
                     <div
                         key={notif.id}
-                        className="flex items-center gap-3 bg-white/95 backdrop-blur-xl border border-white/60 shadow-[0_8px_32px_rgba(0,0,0,0.18)] rounded-2xl px-5 py-3 animate-hand-raise-ghost"
+                        className="flex items-center gap-3 bg-white/95 backdrop-blur-xl border border-white/60 shadow-[0_8px_32px_rgba(0,0,0,0.18)] rounded-2xl px-5 py-3"
                         style={{ animation: "handRaiseIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both" }}
                     >
-                        <span className="text-2xl animate-hand-wave">✋</span>
-                        <div>
-                            <p className="text-sm font-bold text-slate-800 leading-tight">
-                                {notif.name === "You" ? "You raised your hand" : `${notif.name} raised their hand`}
-                            </p>
-                            <p className="text-[11px] text-slate-400 mt-0.5">Everyone can see this</p>
-                        </div>
+                        {notif.isPresence ? (
+                            <>
+                                <span className="text-2xl">{notif.presenceType === "joined" ? "👋" : "🚪"}</span>
+                                <div>
+                                    <p className="text-sm font-bold text-slate-800 leading-tight">
+                                        {notif.presenceType === "joined"
+                                            ? `${notif.name} joined the meeting`
+                                            : `${notif.name} left the meeting`}
+                                    </p>
+                                    <p className="text-[11px] text-slate-400 mt-0.5">
+                                        {notif.presenceType === "joined" ? "Welcome!" : "See you later"}
+                                    </p>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <span className="text-2xl animate-hand-wave">✋</span>
+                                <div>
+                                    <p className="text-sm font-bold text-slate-800 leading-tight">
+                                        {notif.name === "You" ? "You raised your hand" : `${notif.name} raised their hand`}
+                                    </p>
+                                    <p className="text-[11px] text-slate-400 mt-0.5">Everyone can see this</p>
+                                </div>
+                            </>
+                        )}
                     </div>
                 ))}
             </div>
@@ -786,7 +802,6 @@ const Meeting = () => {
                     setShowParticipants={setShowParticipants}
                     setShowHandRaise={setShowHandRaise}
                     setShowMenuPage={setShowMenuPage}
-                    participantMembers={participantMembers}
                     participantName={displayName}
                     localVideoRef={localVideoRef}
                     isVideoOn={isVideoOn}
@@ -807,7 +822,7 @@ const Meeting = () => {
                     showMenuPage={showMenuPage}
                     setShowMenuPage={setShowMenuPage}
                     handRaiseMembers={handRaiseMembers}
-                    participantMembers={participantMembers}
+                    liveParticipants={liveParticipants}
                     setShowParticipantsDirect={setShowParticipantsGrid}
                     meetingId={meetingId}
                     userId={userId}
