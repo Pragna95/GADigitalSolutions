@@ -3,5 +3,11 @@
   "private": true,
   "workspaces": [
     "frontend1"
-  ]
+  ],
+  "scripts": {
+    "start": "npm --prefix frontend1 run start",
+    "dev": "npm --prefix frontend1 run dev",
+    "build": "npm --prefix frontend1 run build",
+    "lint": "npm --prefix frontend1 run lint"
+  }
 }
