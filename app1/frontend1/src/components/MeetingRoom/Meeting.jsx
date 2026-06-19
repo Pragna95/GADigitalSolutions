@@ -51,7 +51,6 @@ const Meeting = () => {
     const [handRaisedUsers, setHandRaisedUsers] = useState({});
     const handRaiseMembers = Object.values(handRaisedUsers);
     const handRaiseCount = Object.keys(handRaisedUsers).length;
-    // Server-authoritative count synced in real-time via WebSocket (same across all tabs)
     const [liveHandRaiseCount, setLiveHandRaiseCount] = useState(0);
     const [handRaiseNotifications, setHandRaiseNotifications] = useState([]);
     const handRaiseTimers = useRef({});
@@ -70,15 +69,17 @@ const Meeting = () => {
     const participantName = searchParams.get("name") || "Andaya";
     const displayName = participantName;
 
-    // Unique user ID for screen share & participant tracking
+    // ✅ FIX 1: sessionStorage వాడుతున్నాం (localStorage కాదు)
+    // localStorage అన్ని tabs share చేస్తాయి → same userId → same participant
+    // sessionStorage per-tab unique → 3 tabs = 3 different userIds = 3 participants
     const getStoredUserId = () => {
         const key = `huddle_user_id_${meetingId}`;
-        let id = localStorage.getItem(key);
+        let id = sessionStorage.getItem(key);
         if (!id) {
             id = typeof crypto !== "undefined" && crypto.randomUUID
                 ? `u-${crypto.randomUUID().slice(0, 8)}`
                 : `u-${Math.random().toString(36).slice(2, 10)}`;
-            localStorage.setItem(key, id);
+            sessionStorage.setItem(key, id);
         }
         return id;
     };
@@ -97,19 +98,12 @@ const Meeting = () => {
     const [remoteStreams, setRemoteStreams] = useState([]);
     const [roomPeers, setRoomPeers] = useState({});
     const [liveParticipants, setLiveParticipants] = useState([]);
+
     useEffect(() => {
         console.log("ROOM PEERS:", roomPeers);
         console.log("REMOTE STREAMS:", remoteStreams);
     }, [roomPeers, remoteStreams]);
 
-    // FIXED: This was previously a duplicate, useless effect that just logged
-    // liveParticipants. The real bug was a *second* useEffect being called
-    // INSIDE the WebSocket onmessage callback below (not allowed in React —
-    // hooks must only be called at the top level of the component). That stray
-    // call threw an "Invalid hook call" error every time a participant_list
-    // message arrived, which got silently swallowed by the surrounding
-    // try/catch — so setLiveParticipants() right after it never ran. This
-    // top-level effect is the correct (and only) place to log liveParticipants.
     useEffect(() => {
         console.log("LIVE PARTICIPANTS STATE", participantName, liveParticipants.length, liveParticipants);
     }, [liveParticipants, participantName]);
@@ -144,7 +138,6 @@ const Meeting = () => {
         });
     };
 
-    // 🔥 FIX 1: Only delete the box if they actually left the meeting
     const removePeer = (peerId, isFullLeave = false) => {
         const pc = pcRefs.current[peerId];
         if (pc) {
@@ -175,7 +168,7 @@ const Meeting = () => {
                 sender: localPeerId,
                 user_id: userId,
                 meeting_id: meetingId,
-                name: participantName, // Crucial for instant box rendering
+                name: participantName,
                 ...payload,
             }),
         );
@@ -210,14 +203,13 @@ const Meeting = () => {
             }
         };
 
-        // 🔥 FIX 2: If connection drops, keep the box, just drop the video!
         pc.onconnectionstatechange = () => {
             if (
                 pc.connectionState === "failed" ||
                 pc.connectionState === "disconnected" ||
                 pc.connectionState === "closed"
             ) {
-                removePeer(remotePeerId, false); // false = keep them in the grid!
+                removePeer(remotePeerId, false);
             }
         };
 
@@ -265,13 +257,11 @@ const Meeting = () => {
     };
 
     const handleSignalMessage = async (message) => {
-        // 🔥 FIX 1: Ignore server broadcast messages that don't have a sender!
         if (!message || !message.sender || message.sender === localPeerId) return;
 
         const { type, sender, target, name, user_id } = message;
         if (target && target !== localPeerId) return;
 
-        // INSTANTLY add anyone we hear from to the visual grid
         setRoomPeers((prev) => {
             if (!prev[sender]) {
                 return { ...prev, [sender]: { name: name || `Guest ${sender.slice(-4)}`, user_id: user_id } };
@@ -394,7 +384,6 @@ const Meeting = () => {
                         });
                     }
                 } else if (payload.event === "countUpdate" && typeof payload.count === "number") {
-                    // Server-authoritative count broadcast — update all browsers in sync
                     setLiveHandRaiseCount(payload.count);
                 } else {
                     await handleSignalMessage(payload);
@@ -429,7 +418,7 @@ const Meeting = () => {
         };
     }, [meetingId, localPeerId, participantName, isWebRtcReady]);
 
-    // ── Participant WebSocket: listens for grid updates and hand-raise counts ──
+    // ── Participant WebSocket ──
     useEffect(() => {
         if (!meetingId) return;
 
@@ -439,8 +428,6 @@ const Meeting = () => {
 
         pWs.onopen = () => {
             console.log("[ParticipantWS] Connected:", wsUrl);
-
-            // 🔥 CRITICAL FIX 1: Announce we joined so the backend counts us in the grid!
             pWs.send(JSON.stringify({
                 type: "participant_join",
                 name: participantName,
@@ -453,7 +440,6 @@ const Meeting = () => {
                 const msg = JSON.parse(event.data);
                 const data = msg;
 
-                // 1. Maintain your existing Hand Raise Logic
                 if (
                     data.type === "hand_count_init" ||
                     data.type === "hand_count_update"
@@ -461,22 +447,34 @@ const Meeting = () => {
                     setLiveHandRaiseCount(data.count || 0);
                     return;
                 }
+
+                // ✅ FIX 2: ParticipantWS నుండి వచ్చే hand_raise events handle చేస్తున్నాం
+                // ఇప్పుడు toggleHandRaise లో participantWsRef కి పంపుతున్నాం
+                // కాబట్టి ఇక్కడ receive చేసి ghost notification చూపిస్తున్నాం
                 if (data.type === "hand_raise") {
                     setHandRaisedUsers((prev) => {
                         const next = { ...prev };
                         if (data.is_raised) {
                             const name = data.user_name || `Guest ${data.user_id.slice(-4)}`;
                             next[data.user_id] = name;
+                            // Self తప్ప అందరికీ ghost notification చూపించు
                             if (data.user_id !== userId) {
                                 showHandRaiseGhost(data.user_id, name);
                             }
                         } else {
                             delete next[data.user_id];
                             setHandRaiseNotifications((prev) => prev.filter((n) => n.uid !== data.user_id));
+                            if (handRaiseTimers.current[data.user_id]) {
+                                clearTimeout(handRaiseTimers.current[data.user_id]);
+                                delete handRaiseTimers.current[data.user_id];
+                            }
                         }
                         return next;
                     });
-                } else if (msg.event === "countUpdate" && typeof msg.count === "number") {
+                    return;
+                }
+
+                if (msg.event === "countUpdate" && typeof msg.count === "number") {
                     setLiveHandRaiseCount(msg.count);
                 } else if (msg.event === "state_changed" && msg.user_id && msg.user_id !== userId) {
                     setHandRaisedUsers((prev) => {
@@ -492,14 +490,7 @@ const Meeting = () => {
                     });
                 }
 
-                // 🔥 CRITICAL FIX 2: Listen for the dynamic participant grid list!
                 if (msg.type === "participant_list") {
-                    // FIXED: removed an illegal `useEffect(...)` call that used to sit
-                    // right here. Calling a React hook inside a WebSocket callback is
-                    // invalid and was throwing an error that the surrounding try/catch
-                    // silently swallowed — which meant setLiveParticipants() below
-                    // NEVER actually ran. That was the entire reason the grid never
-                    // updated no matter how many tabs you opened.
                     console.log(
                         "PARTICIPANT LIST RECEIVED",
                         participantName,
@@ -509,24 +500,17 @@ const Meeting = () => {
                     setLiveParticipants(msg.participants);
                     setRoomPeers((prevPeers) => {
                         const next = { ...prevPeers };
-
-                        // Grab the unique connection IDs of everyone currently live
                         const liveWsIds = msg.participants.map(p => p.id);
-
-                        // Add any new users to the screen
                         msg.participants.forEach((p) => {
                             if (!next[p.id]) {
                                 next[p.id] = { name: p.name, isWs: true };
                             }
                         });
-
-                        // Remove anyone who closed their browser tab
                         Object.keys(next).forEach((key) => {
                             if (next[key].isWs && !liveWsIds.includes(key)) {
                                 delete next[key];
                             }
                         });
-
                         return next;
                     });
                 }
@@ -579,11 +563,6 @@ const Meeting = () => {
                 }
             });
             setHandRaisedUsers(initialHandRaised);
-            // Do NOT seed liveHandRaiseCount from DB here — DB data can be stale from
-            // a previous session (hand_raised stays true if the user closed without lowering).
-            // The correct count is broadcast by the server via countUpdate WebSocket event
-            // whenever any participant state changes, including the reset-on-join call in
-            // fetchParticipantState below.
         } catch (error) {
             console.error("Failed to fetch all participants:", error);
         }
@@ -594,18 +573,10 @@ const Meeting = () => {
             const response = await axios.get(
                 `${API_URL}/participant/${meetingId}/${userId}/`
             );
-
             const data = response.data.data;
             if (data) {
                 setIsMicOn(data.mic_on);
                 setIsVideoOn(data.video_on);
-                // Always reset hand_raised to false on a fresh join regardless of the
-                // DB value. The DB stores the state from the *previous* session (the user
-                // may have closed without lowering their hand). Resetting here:
-                //   1. Keeps local UI consistent (hand button not stuck as "raised").
-                //   2. Calls updateParticipantState which removes this userId from the
-                //      server cache's raised_set and broadcasts a fresh countUpdate to
-                //      ALL browsers — correcting the stale "1" default count.
                 setIsHandRaised(false);
                 updateParticipantState(data.mic_on, data.video_on, false);
             }
@@ -623,7 +594,6 @@ const Meeting = () => {
         if (!meetingId || !userId) return;
         try {
             await axios.post(
-
                 `${API_URL}/participant/update/`,
                 {
                     user_id: userId,
@@ -639,7 +609,6 @@ const Meeting = () => {
         }
     };
 
-    // Toggle Mic/Video with hardware track enablement
     const toggleMic = () => {
         const newMicState = !isMicOn;
         setIsMicOn(newMicState);
@@ -693,14 +662,14 @@ const Meeting = () => {
                     delete handRaiseTimers.current[userId];
                 }
             }
-            // Count is NOT updated here — liveHandRaiseCount is driven exclusively
-            // by the server's countUpdate WebSocket broadcast so every browser
-            // (including this one) receives the same authoritative value.
             return next;
         });
 
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({
+        // ✅ FIX 2: wsRef (audio WS) కాదు — participantWsRef కి పంపుతున్నాం
+        // ParticipantConsumer లో hand_raise handler ఉంది (consumers.py లో fix చేశాం)
+        // అది అన్ని tabs కి broadcast చేస్తుంది → అన్ని tabs లో ghost notification వస్తుంది
+        if (participantWsRef.current && participantWsRef.current.readyState === WebSocket.OPEN) {
+            participantWsRef.current.send(JSON.stringify({
                 type: "hand_raise",
                 user_id: userId,
                 user_name: displayName,
@@ -711,7 +680,6 @@ const Meeting = () => {
         updateParticipantState(isMicOn, isVideoOn, newHand);
     };
 
-    // Screen sharing state synchronized from ScreenShareModule
     const [isLocalScreenSharing, setIsLocalScreenSharing] = useState(false);
     const [isAnotherUserSharing, setIsAnotherUserSharing] = useState(false);
     const [sharerLabel, setSharerLabel] = useState("");
@@ -738,7 +706,6 @@ const Meeting = () => {
         };
     }, []);
 
-    // Bridge listeners to receive state changes from ScreenShareModule
     useEffect(() => {
         const handleStateUpdate = (e) => {
             const { isLocalScreenSharing, isAnotherUserSharing, sharerLabel } = e.detail;
@@ -841,8 +808,7 @@ const Meeting = () => {
                     setShowMenuPage={setShowMenuPage}
                     handRaiseMembers={handRaiseMembers}
                     participantMembers={participantMembers}
-                    setShowParticipantsGridDirect={setShowParticipantsGrid}
-
+                    setShowParticipantsDirect={setShowParticipantsGrid}
                     meetingId={meetingId}
                     userId={userId}
                     participantName={participantName}
