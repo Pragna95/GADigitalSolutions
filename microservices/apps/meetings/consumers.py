@@ -26,7 +26,10 @@ class MeetingConsumer(AsyncJsonWebsocketConsumer):
         self.meeting_uuid = str(meeting.id) if meeting else self.meeting_id
 
         self.user_id = "pending_user"
-        self.room_group_name = f"meeting_{self.meeting_uuid}"
+        if "ws/audio/" in self.scope["path"]:
+            self.room_group_name = f"meeting_audio_{self.meeting_uuid}"
+        else:
+            self.room_group_name = f"meeting_video_{self.meeting_uuid}"
 
         global ACTIVE_MEETINGS
         if self.meeting_uuid not in ACTIVE_MEETINGS:

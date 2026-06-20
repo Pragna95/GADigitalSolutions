@@ -65,13 +65,35 @@ TEMPLATES = [
 WSGI_APPLICATION = 'backend.wsgi.application'
 ASGI_APPLICATION = 'backend.asgi.application'
 
+import urllib.parse as urlparse
+
 # Database
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+# https://docs.djangoproject.com/en/5.0/ref/settings/#databases
+database_url = os.getenv("DATABASE_URL")
+if database_url:
+    url = urlparse.urlparse(database_url)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': url.path[1:],
+            'USER': url.username,
+            'PASSWORD': url.password,
+            'HOST': url.hostname,
+            'PORT': url.port or 5432,
+        }
     }
-}
+    query = urlparse.parse_qs(url.query)
+    if 'sslmode' in query:
+        DATABASES['default']['OPTIONS'] = {
+            'sslmode': query['sslmode'][0]
+        }
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 
 EMAIL_HOST = os.environ.get("EMAIL_HOST")
@@ -161,9 +183,15 @@ VALID_API_KEYS = os.getenv(
 # Frontend configuration
 FRONTEND_URL = os.getenv('FrontendURL', 'http://localhost:3000')
 
+# Redirect URL after successful login
+LOGIN_REDIRECT_URL = '/api/super-admin/dashboard/'
+
+# URL where users are redirected for login
+LOGIN_URL = '/api/login/'
+
 CACHES = {
     "default": {
-        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "BACKEND": "backend.cache.FallbackRedisCache",
         "LOCATION": "redis://127.0.0.1:6379/1",
     }
 }
@@ -172,4 +200,5 @@ CACHES = {
 LIVEKIT_URL = os.getenv("LIVEKIT_URL", "http://localhost:7880")
 LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY", "devkey")
 LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET", "secret")
+
 

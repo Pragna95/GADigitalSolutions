@@ -15,6 +15,8 @@ const VideoStage = ({
     participantName,
     localVideoRef,
     isVideoOn,
+    isMicOn,
+    remoteMicStates = {},
     remoteStreams = [],
     roomPeers = {},
     handRaiseCount = 0,
@@ -33,6 +35,7 @@ const VideoStage = ({
             name: `${participantName} (You)`,
             isLocal: true,
             stream: null,
+            micOn: isMicOn,
         });
 
         // Add Remote Users from the server-authoritative liveParticipants list
@@ -45,13 +48,15 @@ const VideoStage = ({
                 id: p.id || `remote-${p.user_id}`,
                 name: cleanName,
                 isLocal: false,
-                stream: rStream ? rStream.stream : null
+                stream: rStream ? rStream.stream : null,
+                // ✅ Default to "on" until we've actually heard otherwise for this user_id
+                micOn: remoteMicStates[p.user_id] !== undefined ? remoteMicStates[p.user_id] : true,
             });
         });
 
         console.log("ACTIVE PARTICIPANTS", list);
         return list;
-    }, [participantName, userId, liveParticipants, remoteStreams, roomPeers]);
+    }, [participantName, userId, liveParticipants, remoteStreams, roomPeers, isMicOn, remoteMicStates]);
 
     // ==========================================
     // 2. PAGINATION & ROW LOGIC
@@ -266,7 +271,13 @@ const VideoStage = ({
                                                         playsInline
                                                         ref={(el) => {
                                                             const srcObj = member.isLocal ? localVideoRef?.current?.srcObject : member.stream;
-                                                            if (el && srcObj && el.srcObject !== srcObj) el.srcObject = srcObj;
+                                                            if (el && srcObj && el.srcObject !== srcObj) {
+                                                                el.srcObject = srcObj;
+                                                                // ✅ Explicit play() — autoPlay attribute alone can be
+                                                                // silently blocked by the browser, which is the most
+                                                                // common reason remote audio never starts.
+                                                                el.play().catch(() => {});
+                                                            }
                                                         }}
                                                         className="absolute inset-0 w-full h-full object-cover z-0"
                                                     />
@@ -281,9 +292,11 @@ const VideoStage = ({
                                                     </>
                                                 )}
 
-                                                <div className="absolute top-3 right-3 bg-black/40 rounded-full p-2 z-20">
-                                                    <MicOff size={16} className="text-white" />
-                                                </div>
+                                                {!member.micOn && (
+                                                    <div className="absolute top-3 right-3 bg-black/40 rounded-full p-2 z-20">
+                                                        <MicOff size={16} className="text-white" />
+                                                    </div>
+                                                )}
 
                                                 <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/70 to-transparent z-20">
                                                     <p className="text-white font-semibold">{member.name}</p>

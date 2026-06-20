@@ -180,7 +180,7 @@
 
             <form method="POST" action="{% url 'login' %}">
                 {% csrf_token %}
-                <input type="hidden" name="next" value="{{ request.GET.next|default:next|default:'/super-admin/dashboard/' }}" />
+                <input type="hidden" name="next" value="{{ request.GET.next|default:next|default:'/api/super-admin/dashboard/' }}" />
                 
                 <div class="form-group">
                     <label for="id_username">Username</label>

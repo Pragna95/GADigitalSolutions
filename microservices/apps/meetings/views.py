@@ -186,20 +186,21 @@ def toggle_mic(request):
         _save_state(meeting_uuid, user_id, state)
 
         channel_layer = get_channel_layer()
-        async_to_sync(channel_layer.group_send)(
-            f"meeting_{meeting_uuid}",
-            {
-                "type": "participant_update",
-                "data": {
-                    "event": "state_changed",
-                    "user_id": user_id,
-                    "username": state["username"],
-                    "mic_on": state["mic_on"],
-                    "video_on": state["video_on"],
-                    "hand_raised": state["hand_raised"],
+        for target_group in [f"meeting_{meeting_uuid}", f"participants_{meeting_uuid}"]:
+            async_to_sync(channel_layer.group_send)(
+                target_group,
+                {
+                    "type": "participant_update",
+                    "data": {
+                        "event": "state_changed",
+                        "user_id": user_id,
+                        "username": state["username"],
+                        "mic_on": state["mic_on"],
+                        "video_on": state["video_on"],
+                        "hand_raised": state["hand_raised"],
+                    }
                 }
-            }
-        )
+            )
 
         return JsonResponse({"message": "Mic state updated", "mic_on": state["mic_on"]})
     return JsonResponse({"error": "Only POST allowed"}, status=400)
@@ -211,10 +212,13 @@ def get_meeting_by_identifier(meeting_identifier):
     if not meeting_identifier:
         return None
     try:
-        uuid_value = UUID(meeting_identifier)
+        if isinstance(meeting_identifier, UUID):
+            uuid_value = meeting_identifier
+        else:
+            uuid_value = UUID(str(meeting_identifier))
         return Meeting.objects.get(id=uuid_value)
-    except (ValueError, Meeting.DoesNotExist):
-        return Meeting.objects.filter(meeting_code=meeting_identifier).first()
+    except (ValueError, TypeError, Meeting.DoesNotExist):
+        return Meeting.objects.filter(meeting_code=str(meeting_identifier)).first()
 
 
 @csrf_exempt
@@ -382,21 +386,22 @@ def update_participant(request):
 
         channel_layer = get_channel_layer()
 
-        # Broadcast to audio/WebRTC group (existing behavior)
-        async_to_sync(channel_layer.group_send)(
-            f"meeting_{meeting_uuid}",
-            {
-                "type": "participant_update",
-                "data": {
-                    "event": "state_changed",
-                    "user_id": user_id,
-                    "username": state["username"],
-                    "mic_on": state["mic_on"],
-                    "video_on": state["video_on"],
-                    "hand_raised": state["hand_raised"],
+        # Broadcast to audio/WebRTC group (existing behavior) and participants group
+        for target_group in [f"meeting_{meeting_uuid}", f"participants_{meeting_uuid}"]:
+            async_to_sync(channel_layer.group_send)(
+                target_group,
+                {
+                    "type": "participant_update",
+                    "data": {
+                        "event": "state_changed",
+                        "user_id": user_id,
+                        "username": state["username"],
+                        "mic_on": state["mic_on"],
+                        "video_on": state["video_on"],
+                        "hand_raised": state["hand_raised"],
+                    }
                 }
-            }
-        )
+            )
 
         return JsonResponse({
             "message": "Participant updated",

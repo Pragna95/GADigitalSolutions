@@ -424,32 +424,34 @@ class UpdateParticipantStateView(APIView):
         channel_layer = get_channel_layer()
 
         # 1. Broadcast individual state_changed so other participants update their UI
-        async_to_sync(channel_layer.group_send)(
-            group_name,
-            {
-                "type": "participant_update",
-                "data": {
-                    "event": "state_changed",
-                    "user_id": user_identifier,
-                    "username": state.username if state else username,
-                    "mic_on": state.mic_on if state else request.data.get("mic_on"),
-                    "video_on": state.video_on if state else request.data.get("video_on"),
-                    "hand_raised": bool(request.data.get("hand_raised"))
+        for target_group in [group_name, f"participants_{meeting_key}"]:
+            async_to_sync(channel_layer.group_send)(
+                target_group,
+                {
+                    "type": "participant_update",
+                    "data": {
+                        "event": "state_changed",
+                        "user_id": user_identifier,
+                        "username": state.username if state else username,
+                        "mic_on": state.mic_on if state else request.data.get("mic_on"),
+                        "video_on": state.video_on if state else request.data.get("video_on"),
+                        "hand_raised": bool(request.data.get("hand_raised"))
+                    }
                 }
-            }
-        )
+            )
 
         # 2. Broadcast global hand-raise count so all tabs sync in real time
-        async_to_sync(channel_layer.group_send)(
-            group_name,
-            {
-                "type": "count_update",
-                "data": {
-                    "event": "countUpdate",
-                    "count": hand_raise_count
+        for target_group in [group_name, f"participants_{meeting_key}"]:
+            async_to_sync(channel_layer.group_send)(
+                target_group,
+                {
+                    "type": "count_update",
+                    "data": {
+                        "event": "countUpdate",
+                        "count": hand_raise_count
+                    }
                 }
-            }
-        )
+            )
 
         return Response({
             "message": "updated",
@@ -475,11 +477,7 @@ class LiveKitTokenView(APIView):
             return Response({"error": "Meeting not found"}, status=status.HTTP_404_NOT_FOUND)
 
         # Ensure the user exists in our DB under this meeting's product
-        user, created = User.objects.get_or_create(
-            product=meeting.product,
-            external_user_id=user_id,
-            defaults={"name": name, "email": f"{user_id}@huddle.local", "role": "participant"}
-        )
+        user = get_user_by_identifier(meeting.product, user_id, name=name)
 
         # Check if the user is the host of this meeting. If so, overwrite role to "host"
         if meeting.created_by_user == user:
