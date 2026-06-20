@@ -10,10 +10,12 @@ import Footer from "./Footer.jsx";
 import VideoStage from "./VideoStage.jsx";
 import Sidebar from "./Sidebar.jsx";
 import ScreenShareModule from "./ScreenShareModule.jsx";
+import AddParticipantModal from "./AddParticipantModal.jsx";
 
 const Meeting = () => {
     const [showHandRaise, setShowHandRaise] = useState(false);
     const [showParticipants, setShowParticipants] = useState(false);
+    const [isAddParticipantOpen, setIsAddParticipantOpen] = useState(false);
     const [showParticipantsGrid, setShowParticipantsGrid] = useState(false);
     const [showMenuPage, setShowMenuPage] = useState(false);
     const [activeMenu, setActiveMenu] = useState("assistance");
@@ -765,6 +767,13 @@ const Meeting = () => {
                 isAnotherUserSharing={isAnotherUserSharing}
                 sharerLabel={sharerLabel}
                 handleShareClick={handleShareClick}
+                onAddParticipantsClick={() => setIsAddParticipantOpen(true)}
+            />
+
+            <AddParticipantModal
+                open={isAddParticipantOpen}
+                setOpen={setIsAddParticipantOpen}
+                meetingId={meetingId}
             />
         </div>
     );

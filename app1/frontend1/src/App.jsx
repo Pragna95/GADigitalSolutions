@@ -151,6 +151,11 @@ function App() {
             }
           />
 
+          <Route
+            path="/:company/:letter/:api_key/:meeting_id"
+            element={<MeetingLobby />}
+          />
+
           {/* Legacy links */}
           <Route
             path="/meeting/:company/:api_key/:meeting_id"

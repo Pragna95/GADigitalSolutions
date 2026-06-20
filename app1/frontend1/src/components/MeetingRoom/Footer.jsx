@@ -28,6 +28,7 @@ const Footer = ({
     isAnotherUserSharing = false,
     sharerLabel = "",
     handleShareClick,
+    onAddParticipantsClick,
 }) => {
     return (
         <footer className="h-[95px] bg-[#f8fafc] border-t border-slate-100 flex items-center justify-between px-6 shrink-0 shadow-[0_-4px_20px_rgba(0,0,0,0.015)]">
@@ -118,7 +119,10 @@ const Footer = ({
                 </button>
 
                 {/* USER PLUS */}
-                <button className="w-11 h-11 rounded-xl flex items-center justify-center text-slate-600 hover:bg-slate-100 hover:scale-110 active:scale-95 transition-all duration-205 cursor-pointer hover:shadow-sm border border-transparent hover:border-slate-100">
+                <button
+                    onClick={onAddParticipantsClick}
+                    className="w-11 h-11 rounded-xl flex items-center justify-center text-slate-600 hover:bg-slate-100 hover:scale-110 active:scale-95 transition-all duration-205 cursor-pointer hover:shadow-sm border border-transparent hover:border-slate-100"
+                >
                     <UserPlus size={18} />
                 </button>
 

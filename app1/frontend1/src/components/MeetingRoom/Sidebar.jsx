@@ -6,7 +6,8 @@ const Sidebar = ({
     showParticipants, setShowParticipants,
     showMenuPage, setShowMenuPage,
     setShowParticipantsGrid,
-    handRaiseMembers = [], participantMembers = []
+    handRaiseMembers = [], participantMembers = [],
+    liveParticipants = [], userId, participantName
 }) => {
     const [activeMenu, setActiveMenu] = useState("chat");
     const [message, setMessage] = useState("");
@@ -15,6 +16,24 @@ const Sidebar = ({
         { sender: "Rahul", text: "Can we start the demo?" },
         { sender: "Anika", text: "Sharing the screen now." },
     ]);
+    const [showAll, setShowAll] = useState(false);
+
+    const displayParticipants = React.useMemo(() => {
+        if (liveParticipants && liveParticipants.length > 0) {
+            const list = [];
+            list.push(`${participantName || "You"} (You)`);
+            liveParticipants.forEach((p) => {
+                if (p.user_id !== userId) {
+                    const cleanName = p.name ? p.name.replace(/_[a-zA-Z0-9]{5}$/, "") : "Remote User";
+                    list.push(cleanName);
+                }
+            });
+            return list;
+        }
+        return participantMembers || [];
+    }, [liveParticipants, participantMembers, participantName, userId]);
+
+    const visibleParticipants = showAll ? displayParticipants : displayParticipants.slice(0, 8);
 
     const handleSendMessage = () => {
         if (message.trim() === "") return;
@@ -63,7 +82,7 @@ const Sidebar = ({
                                 <p className="text-sm font-medium">No hands raised yet</p>
                             </div>
                         ) : (
-                            (showHandRaise ? handRaiseMembers : (participantMembers || []).slice(0, 8)).map((member, index) => (
+                            (showHandRaise ? handRaiseMembers : visibleParticipants).map((member, index) => (
                                 <div key={index} className="border border-slate-100 rounded-xl px-3 py-2 flex items-center gap-3 hover:bg-slate-50 cursor-pointer">
                                     {showHandRaise ? (
                                         <div className="w-10 h-10 rounded-[12px] bg-[#ACBFFF] flex items-center justify-center shadow-md shrink-0 relative">
@@ -71,7 +90,9 @@ const Sidebar = ({
                                             <span className="absolute -top-1 -right-1 text-[12px]">✋</span>
                                         </div>
                                     ) : (
-                                        <img src={`https://randomuser.me/api/portraits/${index % 2 === 0 ? "men" : "women"}/${index + 20}.jpg`} className="w-10 h-10 rounded-full object-cover" alt="" />
+                                        <div className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-xs font-bold text-[#1e2b72] shrink-0">
+                                            {member.replace(" (You)", "").substring(0, 2).toUpperCase()}
+                                        </div>
                                     )}
                                     <span className="text-sm font-semibold text-slate-700">{member}</span>
                                 </div>
@@ -79,11 +100,18 @@ const Sidebar = ({
                         )}
                     </div>
 
-                    {!showHandRaise && (
-                        <button onClick={() => setShowParticipantsGrid(true)} className="mt-5 bg-[#0f172a] text-white py-3 rounded-2xl text-sm font-bold shadow-sm cursor-pointer">
+                    {!showHandRaise && !showAll && displayParticipants.length > 8 && (
+                        <button onClick={() => setShowAll(true)} className="mt-5 bg-[#0f172a] text-white py-3 rounded-2xl text-sm font-bold shadow-sm cursor-pointer w-full">
                             View All Participants
                         </button>
                     )}
+
+                    {!showHandRaise && showAll && (
+                        <button onClick={() => setShowAll(false)} className="mt-5 bg-slate-100 hover:bg-slate-200 text-slate-705 text-slate-700 py-3 rounded-2xl text-sm font-bold shadow-sm cursor-pointer w-full border border-slate-200">
+                            Show Less
+                        </button>
+                    )}
+
                 </div>
             )}
 

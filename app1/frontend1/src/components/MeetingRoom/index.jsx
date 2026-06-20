@@ -9,6 +9,7 @@ import Header from "./Header.jsx";
 import Footer from "./Footer.jsx";
 import VideoStage from "./VideoStage.jsx";
 import Sidebar from "./Sidebar.jsx";
+import AddParticipantModal from "./AddParticipantModal.jsx";
 
 const participantMembers = [
     "Rahul",
@@ -36,6 +37,7 @@ const participantMembers = [
 const MeetingRoom = () => {
     const [showHandRaise, setShowHandRaise] = useState(false);
     const [showParticipants, setShowParticipants] = useState(false);
+    const [isAddParticipantOpen, setIsAddParticipantOpen] = useState(false);
     const [showParticipantsGrid, setShowParticipantsGrid] = useState(false);
     const [showMenuPage, setShowMenuPage] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
@@ -637,6 +639,13 @@ const MeetingRoom = () => {
                 setShowMenuPage={setShowMenuPage}
                 setShowParticipants={setShowParticipants}
                 setShowHandRaise={setShowHandRaise}
+                onAddParticipantsClick={() => setIsAddParticipantOpen(true)}
+            />
+
+            <AddParticipantModal
+                open={isAddParticipantOpen}
+                setOpen={setIsAddParticipantOpen}
+                meetingId={meetingId}
             />
         </div>
     );

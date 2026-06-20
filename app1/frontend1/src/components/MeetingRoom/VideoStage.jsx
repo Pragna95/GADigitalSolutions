@@ -125,52 +125,17 @@ const VideoStage = ({
 
     return (
         <div
-            className={`relative rounded-[28px] overflow-hidden bg-slate-950 border border-slate-800 shadow-[0_12px_40px_rgba(0,0,0,0.4)] h-full transition-all duration-300 ${showParticipantsGrid
-                    ? "w-full"
-                    : showHandRaise || showParticipants || showMenuPage
+            className={`relative rounded-[28px] overflow-hidden bg-slate-950 border border-slate-800 shadow-[0_12px_40px_rgba(0,0,0,0.4)] h-full transition-all duration-300 ${
+                    showHandRaise || showParticipants || showMenuPage
                         ? "w-[80%]"
                         : "w-full"
                 }`}
         >
             {/* 🔥 FIX 2: Hidden anchor keeps your local camera hardware permanently active! */}
             <video ref={localVideoRef} autoPlay muted playsInline className="hidden" />
-            {showParticipantsGrid ? (
-                // ================= LIST VIEW =================
-                <div className="w-full h-full bg-[#0f172a] p-6 overflow-y-auto">
-                    <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-white text-2xl font-bold tracking-tight">
-                            All Participants
-                        </h2>
-                        <button
-                            onClick={() => {
-                                setShowParticipantsGrid(false);
-                                setShowParticipants(false);
-                                setShowHandRaise(false);
-                                setShowMenuPage(false);
-                                if (setShowParticipantsList) setShowParticipantsList(false);
-                            }}
-                            className="bg-white text-slate-700 px-5 py-2 rounded-xl text-sm font-semibold hover:bg-slate-100 transition-all duration-200 shadow-sm"
-                        >
-                            Back to Meeting
-                        </button>
-                    </div>
-                    <div className="space-y-3">
-                        {activeParticipants.map((member, index) => (
-                            <div
-                                key={`${member.id}-${index}`}
-                                className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-white"
-                            >
-                                <span className="font-semibold text-[15px]">{member.name}</span>
-                                <span className="text-white/40 text-sm">
-                                    {member.isLocal ? "You" : "Participant"}
-                                </span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            ) : (
-                // ================= MAIN GRID / STAGE =================
-                <div className="relative w-full h-full p-4 bg-[#0f172a]">
+            
+            {/* ================= MAIN GRID / STAGE ================= */}
+            <div className="relative w-full h-full p-4 bg-[#0f172a]">
 
                     {/* ================= RESTORED TOP RIGHT OVERLAYS ================= */}
                     <div className="absolute top-5 right-5 flex flex-col items-end gap-4 z-40">
@@ -329,7 +294,7 @@ const VideoStage = ({
                         )}
                     </div>
                 </div>
-            )}
+            )
         </div>
     );
 };

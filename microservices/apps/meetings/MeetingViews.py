@@ -33,13 +33,22 @@ from .livekit_utils import (
 )
 
 
-def build_meeting_path(meeting, encrypted_api_key=None):
+def build_meeting_path(meeting, api_key=None):
     """
     Return a canonical frontend-relative meeting path.
-    Format (preferred): /{meeting_code}/{encrypted_api_key}/{meeting_id}
-    If no encrypted_api_key is provided, return /{meeting_code}/{meeting_id}
+    Format: /{product_slug}/{random_letter}/{api_key}/{meeting_id}
     """
-    return f"/{meeting.meeting_code}/{meeting.id}"
+    product_slug = "huddle"
+    if meeting.product:
+        product_slug = meeting.product.slug or meeting.product.name.lower().replace(" ", "-")
+    
+    random_letter = random.choice(string.ascii_lowercase)
+    
+    key_to_use = api_key
+    if not key_to_use:
+        key_to_use = getattr(settings, "X_API_KEY", None) or "kTh35Mm1gA8lX4StIrpfYIvtmStj2XCUVMm3nIdrnU8"
+        
+    return f"/{product_slug}/{random_letter}/{key_to_use}/{meeting.id}"
 
 
 def generate_meeting_code():
@@ -237,7 +246,7 @@ class ScheduleMeetingView(APIView):
 
 
         # Canonical frontend-relative meeting path
-        meeting_path = build_meeting_path(meeting)
+        meeting_path = build_meeting_path(meeting, api_key=raw_api_key)
 
         # Full meeting link used in emails
         meeting_link = f"{settings.FRONTEND_URL}{meeting_path}"
@@ -298,7 +307,7 @@ class ListMeetingsView(APIView):
                 if participant.user:
                     participants.append(participant.user.email)
 
-            meeting_path = build_meeting_path(meeting)
+            meeting_path = build_meeting_path(meeting, api_key=raw_api_key)
             data.append({
         'id': str(meeting.id),
         'title': meeting.title,
@@ -673,3 +682,86 @@ class ChatMessageView(APIView):
             "id": str(chat.id),
             "message": "saved"
         })
+
+
+class InviteParticipantView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        meeting_id = request.data.get("meeting_id")
+        email = request.data.get("email")
+
+        if not meeting_id or not email:
+            return Response(
+                {"error": "meeting_id and email are required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 1. Resolve meeting
+        meeting = get_meeting_by_identifier(meeting_id)
+        if not meeting:
+            return Response(
+                {"error": "Meeting not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # 2. Get or create user for this participant under meeting's product
+        raw_api_key = request.headers.get("X-Api-Key")
+        if not raw_api_key:
+            raw_api_key = getattr(settings, "X_API_KEY", None) or "kTh35Mm1gA8lX4StIrpfYIvtmStj2XCUVMm3nIdrnU8"
+
+        product = meeting.product
+        participant_user, created = User.objects.get_or_create(
+            product=product,
+            email=email,
+            defaults={
+                "name": email.split("@")[0].capitalize(),
+                "external_user_id": email,
+                "role": "participant"
+            }
+        )
+
+        # 3. Create MeetingParticipant
+        MeetingParticipant.objects.get_or_create(
+            meeting=meeting,
+            user=participant_user,
+            defaults={
+                "role": "participant",
+                "invited_by": meeting.created_by_user,
+                "invitation_status": "pending"
+            }
+        )
+
+        # 4. Build canonical link
+        meeting_path = build_meeting_path(meeting, api_key=raw_api_key)
+        meeting_link = f"{settings.FRONTEND_URL}{meeting_path}"
+
+        # 5. Send email instantly
+        subject = f"Meeting Invitation: {meeting.title}"
+        message = f"""
+You have been invited to join a meeting in progress.
+
+TITLE: {meeting.title}
+
+DESCRIPTION: {meeting.description if meeting.description else "No description provided"}
+
+MEETING LINK: {meeting_link}
+
+Please join the meeting using the link above.
+
+Regards,
+Meeting Team
+"""
+
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[email],
+            fail_silently=False,
+        )
+
+        return Response(
+            {"message": "Invitation sent successfully", "meeting_link": meeting_link},
+            status=status.HTTP_200_OK
+        )

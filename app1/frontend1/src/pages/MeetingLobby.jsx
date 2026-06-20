@@ -16,7 +16,7 @@ import {
 import { microserviceApi } from "@/services/api";
 import placeholderImg from "../assets/placeholder.png";
 export default function MeetingLobby() {
-    const { company, api_key, meeting_id, meetingCode, meetingId, } = useParams();
+    const { company, letter, api_key, meeting_id, meetingCode, meetingId, } = useParams();
     const actualMeetingId = meeting_id || meetingId;
     const actualMeetingCode = meetingCode;
     const navigate = useNavigate();
@@ -119,7 +119,7 @@ export default function MeetingLobby() {
                 import.meta.env.VITE_MICROSERVICE_URL ||
                 "http://localhost:8000";
             const frontendUrl = window.location.origin;
-            const targetUrl = `${frontendUrl}/auth-return?redirect=/${company}/${api_key}/${meeting_id}`;
+            const targetUrl = `${frontendUrl}/auth-return?redirect=/${company}/${letter || 'a'}/${api_key}/${meeting_id}`;
             window.location.href = `${microserviceUrl}/login/?next=${encodeURIComponent(targetUrl)}`;
             return;
         }

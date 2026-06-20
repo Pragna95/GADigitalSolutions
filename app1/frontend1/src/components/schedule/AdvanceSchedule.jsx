@@ -258,8 +258,8 @@ export default function AdvanceSchedule({
             }
 
             if (response.status === 201) {
-                // Construct URL: frontend_url/{meeting_code}/{encrypted_api_key}/{meeting_id}
-                const fullLink = `${window.location.origin}/${data.meeting_code}/${data.meeting_id}`;
+                // Use the backend-provided meeting_link or meeting_path, with fallback
+                const fullLink = data.meeting_link || (data.meeting_path ? `${window.location.origin}${data.meeting_path}` : `${window.location.origin}/${data.meeting_code}/${data.meeting_id}`);
 
                 toast.success(`Meeting scheduled! Link copied to clipboard.`);
                 try {
@@ -1036,21 +1036,21 @@ h-[795.19px]
                                 </label>
                                 <div className="flex gap-2">
                                     <div className="flex-1">
-                                        <Select
+                                        <input
+                                            type="text"
                                             value={newEmail}
-                                            onValueChange={setNewEmail}
-                                        >
-                                            <SelectTrigger className="w-full h-12 rounded-xl bg-[#eef2f7] border border-gray-200 text-base px-4 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all duration-200 text-[#0f172a]">
-                                                <SelectValue placeholder="Select a user to invite..." />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {availableUsers.map((u, i) => (
-                                                    <SelectItem key={i} value={u.email}>
-                                                        {u.name || u.username} ({u.email})
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
+                                            onChange={(e) => setNewEmail(e.target.value)}
+                                            list="available-users-list"
+                                            placeholder="Enter email to invite..."
+                                            className="w-full h-12 rounded-xl bg-[#eef2f7] border border-gray-200 text-base px-4 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all duration-200 text-[#0f172a]"
+                                        />
+                                        <datalist id="available-users-list">
+                                            {availableUsers.map((u, i) => (
+                                                <option key={i} value={u.email}>
+                                                    {u.name || u.username} ({u.email})
+                                                </option>
+                                            ))}
+                                        </datalist>
                                     </div>
                                     <Button
                                         type="button"

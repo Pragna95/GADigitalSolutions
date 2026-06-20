@@ -17,6 +17,7 @@ urlpatterns = [
     path('meetings/', meeting_views.ListMeetingsView.as_view(), name='api_list_meetings'),
     path('meeting/validate/<str:company>/<str:api_key>/<uuid:meeting_id>/', meeting_views.ValidateMeetingView.as_view(), name='api_validate_meeting'),
     path('meeting/validate-lobby/<uuid:meeting_id>/', meeting_views.ValidateMeetingView.as_view(), name='api_validate_lobby'),
+    path('meeting/invite/', meeting_views.InviteParticipantView.as_view(), name='api_invite_participant'),
     
     # --- LiveKit Integration (from MeetingViews.py) ---
     path('meetings/token/', meeting_views.LiveKitTokenView.as_view(), name='api_livekit_token'),
