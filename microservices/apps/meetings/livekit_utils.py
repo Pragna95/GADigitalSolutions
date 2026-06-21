@@ -142,3 +142,13 @@ def kick_participant_from_room(room_name, identity):
         "identity": identity,
     }
     return make_livekit_request("RoomService", "RemoveParticipant", payload)
+
+def delete_livekit_room(room_name):
+    """
+    Deletes (terminates) the LiveKit room, disconnecting all participants.
+    """
+    payload = {
+        "room": room_name,
+    }
+    return make_livekit_request("RoomService", "DeleteRoom", payload)
+

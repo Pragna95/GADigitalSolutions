@@ -6,13 +6,19 @@ import ScheduledMeetings from "./ScheduledMeetings";
 import MiniCalendar from "../calender/MiniCalender";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
-import { Search } from "lucide-react";
+import { Search, Filter, Check } from "lucide-react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useLocation } from "react-router-dom";
 import { useEffect } from "react";
 import toast from "react-hot-toast";
@@ -20,37 +26,7 @@ import { microserviceApi } from "@/services/api";
 
 const TABS = ["Ongoing", "Scheduled", "Completed"];
 
-const sessions = [
-  {
-    id: 1,
-    project: "PROJECT STARLIGHT",
-    title: "Architecture Review",
-    description: "Review system design and dependencies.",
-    time: "8:00 AM – 10:00 AM",
-    participants: 4,
-    status: "Ongoing",
-  },
-  {
-    id: 2,
-    project: "PROJECT STARLIGHT",
-    title: "Design Sync",
-    description: "Discuss UI/UX updates for next sprint.",
-    time: "11:00 AM – 12:00 PM",
-    participants: 6,
-    status: "Scheduled",
-    date: "2026-05-18",
-  },
-  {
-    id: 3,
-    project: "PROJECT STARLIGHT",
-    title: "Retrospective",
-    description: "Review sprint outcomes and lessons learned.",
-    time: "Yesterday 4:00 PM – 5:00 PM",
-    participants: 5,
-    status: "Completed",
-    date: "2026-05-16",
-  },
-];
+const sessions = [];
 import { useNavigate } from "react-router-dom";
 
 
@@ -59,6 +35,7 @@ import { useNavigate } from "react-router-dom";
 export default function HuddlePage() {
   const [sessionsList, setSessionsList] = useState(sessions);
   const [activeTab, setActiveTab] = useState("Ongoing");
+  const [ongoingFilter, setOngoingFilter] = useState("All"); // "All", "Instant", "Scheduled"
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [meetingId, setMeetingId] = useState("");
   const [pendingSession, setPendingSession] = useState(null);
@@ -172,7 +149,12 @@ export default function HuddlePage() {
         if (apiKey && apiKey !== "null" && apiKey !== "undefined") {
           headers["x-api-key"] = apiKey;
         }
-        const res = await microserviceApi.get("/api/meetings/", { headers });
+        const email = localStorage.getItem("email");
+        const params = {};
+        if (email) {
+          params["email"] = email;
+        }
+        const res = await microserviceApi.get("/api/meetings/", { headers, params });
         if (res.data) {
           setDbMeetings(res.data);
         }
@@ -184,13 +166,26 @@ export default function HuddlePage() {
   }, [refreshTrigger]);
 
   const ongoingDbSessions = dbMeetings
-    .filter(m => m.is_ongoing)
+    .filter(m => {
+      const userEmail = localStorage.getItem("email");
+      const cutoff = localStorage.getItem("instant_meeting_cutoff");
+      
+      const isInstant = m.title === "Instant Huddle";
+      const isNewInstant = isInstant && cutoff && m.created_at && new Date(m.created_at) >= new Date(cutoff);
+      
+      const isInstantOngoing = isInstant &&
+                               isNewInstant &&
+                               !m.is_completed &&
+                               m.created_by_email?.toLowerCase() === userEmail?.toLowerCase();
+      const isScheduledOngoing = m.title !== "Instant Huddle" && m.is_ongoing;
+      return isInstantOngoing || isScheduledOngoing;
+    })
     .map(m => ({
       id: m.id,
       project: "PROJECT STARLIGHT",
       title: m.title,
-      description: m.description || "Active huddle session.",
-      time: "Live Now",
+      description: m.description || (m.title === "Instant Huddle" ? "Quick instant meeting." : "Active scheduled huddle."),
+      time: m.is_ongoing ? "Live Now" : "Ready to Join",
       participants: m.active_participants_count || m.participants?.length || 0,
       status: "Ongoing",
       link: m.link,
@@ -213,7 +208,15 @@ export default function HuddlePage() {
 
   const placeholders = sessionsList.filter((s) => s.status === activeTab);
   const dbItems = activeTab === "Ongoing" ? ongoingDbSessions : (activeTab === "Completed" ? completedDbSessions : []);
-  const filteredSessions = [...dbItems, ...placeholders];
+  
+  let filteredSessions = [...dbItems, ...placeholders];
+  if (activeTab === "Ongoing") {
+    if (ongoingFilter === "Instant") {
+      filteredSessions = filteredSessions.filter(s => s.title === "Instant Huddle" || s.title === "Instant Meeting");
+    } else if (ongoingFilter === "Scheduled") {
+      filteredSessions = filteredSessions.filter(s => s.title !== "Instant Huddle" && s.title !== "Instant Meeting");
+    }
+  }
 
   const location = useLocation();
 
@@ -224,6 +227,12 @@ export default function HuddlePage() {
       setShowThankYouDialog(true);
     }
   }, [location.state]);
+
+  useEffect(() => {
+    if (!localStorage.getItem("instant_meeting_cutoff")) {
+      localStorage.setItem("instant_meeting_cutoff", new Date().toISOString());
+    }
+  }, []);
   const navigate = useNavigate();
 
 
@@ -278,9 +287,46 @@ export default function HuddlePage() {
               </button>
             ))}
           </div>
-          <button className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1 cursor-pointer transition-colors">
-            Filter ⚙
-          </button>
+          
+          {activeTab === "Ongoing" && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="text-xs text-slate-500 hover:text-[#1e2b72] flex items-center gap-1.5 cursor-pointer transition-all border border-slate-200 hover:border-[#1e2b72]/30 px-3 py-1.5 rounded-xl bg-white shadow-sm font-bold active:scale-98">
+                  <Filter className="size-3.5 text-indigo-500" />
+                  <span>Show: {ongoingFilter === "All" ? "All Ongoing" : ongoingFilter === "Instant" ? "Instant Only" : "Scheduled Only"}</span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48 bg-white border border-slate-200 rounded-2xl shadow-xl p-2 z-50 animate-scale-in">
+                <DropdownMenuItem
+                  onClick={() => setOngoingFilter("All")}
+                  className="flex items-center justify-between rounded-xl px-3 py-2 cursor-pointer hover:bg-indigo-50/50 text-xs font-semibold text-slate-700 hover:text-[#1e2b72] outline-none"
+                >
+                  <span>All Ongoing</span>
+                  {ongoingFilter === "All" && <Check className="size-3.5 text-[#1e2b72]" />}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setOngoingFilter("Instant")}
+                  className="flex items-center justify-between rounded-xl px-3 py-2 cursor-pointer hover:bg-indigo-50/50 text-xs font-semibold text-slate-700 hover:text-[#1e2b72] outline-none"
+                >
+                  <span>Instant Only</span>
+                  {ongoingFilter === "Instant" && <Check className="size-3.5 text-[#1e2b72]" />}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setOngoingFilter("Scheduled")}
+                  className="flex items-center justify-between rounded-xl px-3 py-2 cursor-pointer hover:bg-indigo-50/50 text-xs font-semibold text-slate-700 hover:text-[#1e2b72] outline-none"
+                >
+                  <span>Scheduled Only</span>
+                  {ongoingFilter === "Scheduled" && <Check className="size-3.5 text-[#1e2b72]" />}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
+          {activeTab !== "Ongoing" && (
+            <button className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1 cursor-pointer transition-colors">
+              Filter ⚙
+            </button>
+          )}
         </div>
 
         {/* Session Cards */}
@@ -288,7 +334,13 @@ export default function HuddlePage() {
           {activeTab === "Scheduled" ? (
             <ScheduledMeetings refreshTrigger={refreshTrigger} />
           ) : filteredSessions.length > 0 ? (
-            filteredSessions.map((s) => <SessionCard key={s.id} session={s} />)
+            filteredSessions.map((s) => (
+              <SessionCard
+                key={s.id}
+                session={s}
+                onRefresh={() => setRefreshTrigger((prev) => prev + 1)}
+              />
+            ))
           ) : (
             <p className="text-gray-400 text-sm italic">No sessions found.</p>
           )}

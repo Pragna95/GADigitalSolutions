@@ -46,11 +46,12 @@ const Meeting = () => {
     ]);
 
     const navigate = useNavigate();
-    const { meeting_id } = useParams();
+    const { company, letter, api_key, meeting_id } = useParams();
     const meetingId = meeting_id || "b40842cc-954a-4bc1-a9da-9036a03e7657";
     const [searchParams] = useSearchParams();
     const participantName = searchParams.get("name") || "Andaya";
     const displayName = participantName;
+    const [userRole, setUserRole] = useState(searchParams.get("role") || "participant");
 
     // Generate unique random UUID per tab
     const generateFreshId = () => {
@@ -178,9 +179,12 @@ const Meeting = () => {
                     meeting_id: meetingId,
                     user_id: userId,
                     name: participantName,
-                    role: "speaker"
+                    role: userRole
                 });
-                const { token, url } = tokenResponse.data;
+                const { token, url, role: returnedRole } = tokenResponse.data;
+                if (returnedRole) {
+                    setUserRole(returnedRole);
+                }
 
                 if (!active) return;
 
@@ -299,6 +303,39 @@ const Meeting = () => {
             try {
                 const msg = JSON.parse(event.data);
                 const data = msg;
+
+                if (data.event === "moderation") {
+                    if (data.action === "kick" && data.target_identity === userId) {
+                        toast.error("You have been kicked from the meeting by the host.");
+                        setTimeout(() => {
+                            navigate("/thank-you", {
+                                state: {
+                                    company,
+                                    letter,
+                                    api_key,
+                                    meetingId: meetingId,
+                                    role: userRole,
+                                    name: participantName
+                                }
+                            });
+                        }, 1500);
+                    } else if (data.action === "end_meeting") {
+                        toast.error("The meeting has been ended by the host.");
+                        setTimeout(() => {
+                            navigate("/thank-you", {
+                                state: {
+                                    company,
+                                    letter,
+                                    api_key,
+                                    meetingId: meetingId,
+                                    role: userRole,
+                                    name: participantName
+                                }
+                            });
+                        }, 1500);
+                    }
+                    return;
+                }
 
                 if (
                     data.type === "hand_count_init" ||
@@ -583,6 +620,43 @@ const Meeting = () => {
         updateParticipantState(isMicOn, isVideoOn, newHand);
     };
 
+    const handleKickParticipant = async (targetUserId, targetName) => {
+        try {
+            await axios.post("http://127.0.0.1:8000/api/meetings/moderate/", {
+                meeting_id: meetingId,
+                action: "kick",
+                target_identity: targetUserId
+            });
+            toast.success(`Kicked ${targetName} successfully.`);
+        } catch (error) {
+            console.error("Failed to kick participant:", error);
+            toast.error("Failed to kick participant.");
+        }
+    };
+
+    const handleEndMeeting = async () => {
+        try {
+            await axios.post("http://127.0.0.1:8000/api/meetings/moderate/", {
+                meeting_id: meetingId,
+                action: "end_meeting"
+            });
+            toast.success("Meeting ended successfully.");
+            navigate("/thank-you", {
+                state: {
+                    company,
+                    letter,
+                    api_key,
+                    meetingId: meetingId,
+                    role: userRole,
+                    name: participantName
+                }
+            });
+        } catch (error) {
+            console.error("Failed to end meeting:", error);
+            toast.error("Failed to end meeting.");
+        }
+    };
+
     const [isLocalScreenSharing, setIsLocalScreenSharing] = useState(false);
     const [isAnotherUserSharing, setIsAnotherUserSharing] = useState(false);
     const [sharerLabel, setSharerLabel] = useState("");
@@ -768,6 +842,10 @@ const Meeting = () => {
                 sharerLabel={sharerLabel}
                 handleShareClick={handleShareClick}
                 onAddParticipantsClick={() => setIsAddParticipantOpen(true)}
+                userRole={userRole}
+                handleKickParticipant={handleKickParticipant}
+                handleEndMeeting={handleEndMeeting}
+                liveParticipants={liveParticipants}
             />
 
             <AddParticipantModal

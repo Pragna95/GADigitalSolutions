@@ -29,7 +29,8 @@ from .livekit_utils import (
     generate_join_token,
     update_participant_permissions,
     mute_participant_track,
-    kick_participant_from_room
+    kick_participant_from_room,
+    delete_livekit_room
 )
 
 
@@ -299,7 +300,15 @@ class ListMeetingsView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        meetings = Meeting.objects.all().order_by('scheduled_start')
+        from django.db.models import Q
+        email = request.query_params.get("email")
+        if email:
+            meetings = Meeting.objects.filter(
+                Q(created_by_user__email__iexact=email) |
+                Q(participants__user__email__iexact=email)
+            ).distinct().order_by('scheduled_start')
+        else:
+            meetings = Meeting.objects.all().order_by('scheduled_start')
         data = []
         signer = Signer()
         raw_api_key = request.headers.get("X-Api-Key")
@@ -328,7 +337,9 @@ class ListMeetingsView(APIView):
             data.append({
                 'id': str(meeting.id),
                 'title': meeting.title,
+                'description': meeting.description or "",
                 'datetime': meeting.scheduled_start.isoformat() if meeting.scheduled_start else None,
+                'created_at': meeting.created_at.isoformat() if meeting.created_at else None,
                 'participants': participants,
                 'link': meeting_path,
                 'meeting_code': meeting.meeting_code,
@@ -336,6 +347,8 @@ class ListMeetingsView(APIView):
                 'is_completed': is_completed,
                 'active_participants_count': active_participants_count,
                 'db_status': meeting.status,
+                'created_by': str(meeting.created_by_user_id),
+                'created_by_email': meeting.created_by_user.email,
             })
 
         return Response(data, status=status.HTTP_200_OK)
@@ -567,8 +580,11 @@ class LiveKitModerationView(APIView):
         target_identity = request.data.get("target_identity")
         track_sid = request.data.get("track_sid")
 
-        if not all([meeting_id, action, target_identity]):
-            return Response({"error": "meeting_id, action, and target_identity are required"}, status=status.HTTP_400_BAD_REQUEST)
+        if not meeting_id or not action:
+            return Response({"error": "meeting_id and action are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if action != "end_meeting" and not target_identity:
+            return Response({"error": "target_identity is required for this action"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             meeting = Meeting.objects.get(id=meeting_id)
@@ -576,6 +592,11 @@ class LiveKitModerationView(APIView):
             return Response({"error": "Meeting not found"}, status=status.HTTP_404_NOT_FOUND)
 
         room_name = meeting.meeting_code
+        group_name = f"participants_{str(meeting.id)}"
+
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        channel_layer = get_channel_layer()
 
         success = False
         error_msg = ""
@@ -588,8 +609,50 @@ class LiveKitModerationView(APIView):
                 error_msg = res
         elif action == "kick":
             success, res = kick_participant_from_room(room_name, target_identity)
-            if not success:
+            if success:
+                # Broadcast moderation event to kick client in real-time
+                async_to_sync(channel_layer.group_send)(
+                    group_name,
+                    {
+                        "type": "participant_update",
+                        "data": {
+                            "event": "moderation",
+                            "action": "kick",
+                            "target_identity": target_identity
+                        }
+                    }
+                )
+            else:
                 error_msg = res
+        elif action == "end_meeting":
+            # 1. Delete LiveKit room to disconnect all participants
+            success, res = delete_livekit_room(room_name)
+            
+            # 2. Update meeting status to completed
+            meeting.status = "completed"
+            meeting.save()
+            
+            # 3. Terminate active meeting sessions
+            active_sessions = MeetingSession.objects.filter(meeting=meeting, status="active")
+            for session in active_sessions:
+                session.status = "ended"
+                session.ended_at = timezone.now()
+                if session.started_at:
+                    session.total_duration_seconds = int((session.ended_at - session.started_at).total_seconds())
+                session.save()
+
+            # 4. Broadcast end_meeting event to redirect all clients in real-time
+            async_to_sync(channel_layer.group_send)(
+                group_name,
+                {
+                    "type": "participant_update",
+                    "data": {
+                        "event": "moderation",
+                        "action": "end_meeting"
+                    }
+                }
+            )
+            success = True
         elif action == "promote":
             success, res = update_participant_permissions(room_name, target_identity, can_publish=True)
             if not success:

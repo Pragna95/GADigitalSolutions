@@ -11,7 +11,10 @@ import {
     LayoutGrid,
     FilePenLine,
     ChevronDown,
+    PhoneOff,
+    UserMinus,
 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 
 const Footer = ({
     isMicOn,
@@ -29,7 +32,13 @@ const Footer = ({
     sharerLabel = "",
     handleShareClick,
     onAddParticipantsClick,
+    userRole = "participant",
+    handleKickParticipant,
+    handleEndMeeting,
+    liveParticipants = [],
+    userId,
 }) => {
+    const [isKickDialogOpen, setIsKickDialogOpen] = React.useState(false);
     return (
         <footer className="h-[95px] bg-[#f8fafc] border-t border-slate-100 flex items-center justify-between px-6 shrink-0 shadow-[0_-4px_20px_rgba(0,0,0,0.015)]">
             {/* LEFT */}
@@ -124,12 +133,32 @@ const Footer = ({
                     className="w-11 h-11 rounded-xl flex items-center justify-center text-slate-600 hover:bg-slate-100 hover:scale-110 active:scale-95 transition-all duration-205 cursor-pointer hover:shadow-sm border border-transparent hover:border-slate-100"
                 >
                     <UserPlus size={18} />
-                </button>
+                </button>                {/* HOST MODERATION */}
+                {userRole === "host" && (
+                    <>
+                        {/* KICK PARTICIPANT */}
+                        <button
+                            onClick={() => setIsKickDialogOpen(true)}
+                            className="w-11 h-11 rounded-xl flex items-center justify-center text-red-500 hover:bg-red-55 hover:scale-110 active:scale-95 transition-all duration-205 cursor-pointer hover:shadow-sm border border-transparent hover:border-red-100"
+                            title="Kick Participant"
+                        >
+                            <UserMinus size={18} />
+                        </button>
 
-                {/* MORE */}
-                <button className="w-11 h-11 rounded-xl flex items-center justify-center text-slate-600 hover:bg-slate-100 hover:scale-110 active:scale-95 transition-all duration-205 cursor-pointer hover:shadow-sm border border-transparent hover:border-slate-100">
-                    <MoreVertical size={18} />
-                </button>
+                        {/* END MEETING */}
+                        <button
+                            onClick={() => {
+                                if (window.confirm("Are you sure you want to end the meeting for all participants?")) {
+                                    handleEndMeeting();
+                                }
+                            }}
+                            className="w-11 h-11 rounded-xl flex items-center justify-center bg-red-500 text-white hover:bg-red-650 hover:scale-110 active:scale-95 transition-all duration-205 cursor-pointer hover:shadow-md shadow-sm"
+                            title="End Meeting for All"
+                        >
+                            <PhoneOff size={18} />
+                        </button>
+                    </>
+                )}
             </div>
 
             {/* RIGHT */}
@@ -150,6 +179,50 @@ const Footer = ({
                     <LayoutGrid size={18} />
                 </button>
             </div>
+
+            {/* KICK PARTICIPANT DIALOG MODAL */}
+            <Dialog open={isKickDialogOpen} onOpenChange={setIsKickDialogOpen}>
+                <DialogContent className="w-[380px] p-6 bg-white border border-slate-200 rounded-3xl shadow-2xl z-[99999] text-slate-800">
+                    <DialogHeader>
+                        <DialogTitle className="text-base font-bold text-slate-900">
+                            Kick a Participant
+                        </DialogTitle>
+                    </DialogHeader>
+                    
+                    <div className="mt-4 max-h-[220px] overflow-y-auto flex flex-col gap-2">
+                        {liveParticipants.filter(p => p.user_id !== userId).length === 0 ? (
+                            <div className="text-xs text-slate-400 py-4 text-center italic">
+                                No other participants in the meeting
+                            </div>
+                        ) : (
+                            liveParticipants
+                                .filter(p => p.user_id !== userId)
+                                .map((p) => {
+                                    const cleanName = p.name ? p.name.replace(/_[a-zA-Z0-9]{5}$/, "") : "Guest";
+                                    return (
+                                        <div
+                                            key={p.id || p.user_id}
+                                            className="flex items-center justify-between w-full px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100/70 rounded-xl border border-slate-100 transition-all"
+                                        >
+                                            <span className="text-xs font-semibold text-slate-700 truncate max-w-[180px]">
+                                                {cleanName}
+                                            </span>
+                                            <button
+                                                onClick={() => {
+                                                    setIsKickDialogOpen(false);
+                                                    handleKickParticipant(p.user_id, cleanName);
+                                                }}
+                                                className="text-xs text-red-500 font-bold hover:text-red-700 cursor-pointer bg-transparent border-none hover:underline"
+                                            >
+                                                Kick
+                                            </button>
+                                        </div>
+                                    );
+                                })
+                        )}
+                    </div>
+                </DialogContent>
+            </Dialog>
         </footer>
     );
 };

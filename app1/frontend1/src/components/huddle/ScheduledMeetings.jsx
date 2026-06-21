@@ -8,7 +8,7 @@ import {
 } from "../ui/dialog";
 import { Button } from "../ui/button";
 import toast from "react-hot-toast";
-import { Copy, Calendar, Users, RefreshCw } from "lucide-react";
+import { Copy, Calendar, Users, RefreshCw, Trash2 } from "lucide-react";
 import api, { microserviceApi } from "../../services/api";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
@@ -32,8 +32,14 @@ export default function ScheduledMeetings({ refreshTrigger }) {
       if (apiKey && apiKey !== "null" && apiKey !== "undefined") {
         headers["x-api-key"] = apiKey;
       }
+      const email = localStorage.getItem("email");
+      const params = {};
+      if (email) {
+        params["email"] = email;
+      }
       const response = await microserviceApi.get("/api/meetings/", {
         headers,
+        params,
       });
       // sort by latest date first
       const sortedMeetings = [...response.data].sort((a, b) => {
@@ -157,22 +163,41 @@ export default function ScheduledMeetings({ refreshTrigger }) {
           No scheduled meetings found.
         </p>
       ) : (
-        <div className="grid gap-3 max-h-[400px] overflow-y-auto pr-2">
+        <div className="grid gap-4 max-h-[450px] overflow-y-auto pr-2">
           {meetings.map((meeting) => (
             <div
               key={meeting.id}
               onClick={() => handleRowClick(meeting)}
-              className="flex items-center justify-between p-4 rounded-xl border border-[#1e2b72]/20 hover:border-[#1e2b72] bg-white shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer text-left"
+              className="group flex flex-col sm:flex-row sm:items-center justify-between p-5 rounded-2xl border border-slate-100 hover:border-[#1e2b72]/45 bg-white shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 cursor-pointer text-left gap-4"
             >
-              <div className="space-y-1">
-                <h3 className="text-sm font-bold text-gray-900">{meeting.title}</h3>
-                <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <Calendar className="size-3.5 text-indigo-500" />
-                  <span>{meeting.datetime}</span>
+              <div className="space-y-2 flex-1 min-w-0">
+                <div className="flex items-start gap-3">
+                  <div className="p-2.5 bg-indigo-50 text-[#1e2b72] rounded-xl group-hover:bg-[#1e2b72] group-hover:text-white transition-colors duration-300 shrink-0">
+                    <Calendar className="size-5" />
+                  </div>
+                  <div className="space-y-1 min-w-0">
+                    <h3 className="text-sm font-extrabold text-slate-800 tracking-tight group-hover:text-[#1e2b72] transition-colors truncate">
+                      {meeting.title}
+                    </h3>
+                    {meeting.description ? (
+                      <p className="text-xs text-slate-400 font-medium leading-relaxed truncate max-w-sm sm:max-w-md">
+                        {meeting.description}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-slate-400 italic">
+                        No description provided.
+                      </p>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-2 text-xs text-indigo-600 font-bold pl-11">
+                  <span>{dayjs(meeting.datetime).format("MMMM D, YYYY - h:mm A")}</span>
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full text-[11px] font-bold">
-                <Users className="size-3 text-indigo-500 shrink-0" />
+              
+              <div className="flex items-center gap-1.5 bg-indigo-50/70 text-indigo-700 px-3.5 py-1.5 rounded-xl text-[11px] font-bold self-start sm:self-auto border border-indigo-100/50 shrink-0">
+                <Users className="size-3.5 text-indigo-500 shrink-0" />
                 <span>{meeting.participants?.length || 0} participants</span>
               </div>
             </div>
@@ -305,12 +330,13 @@ export default function ScheduledMeetings({ refreshTrigger }) {
 
               {/* Footer */}
               <div className="flex justify-between items-center pt-2 border-t border-slate-100">
-                <Button
+                <button
                   onClick={() => handleDeleteMeeting(selectedMeeting.id)}
-                  className="px-4 h-10 rounded-lg bg-red-600 hover:bg-red-700 text-white cursor-pointer"
+                  className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-all duration-200 cursor-pointer"
+                  title="Delete Meeting"
                 >
-                  Delete Meeting
-                </Button>
+                  <Trash2 size={18} />
+                </button>
 
                 <div className="flex gap-2">
                   <Button

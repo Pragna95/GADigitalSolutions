@@ -2,6 +2,9 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AISummaryCard from "@/components/chat/AISummaryCard";
 import TranscriptModal from "@/components/chat/TranscriptModal";
+import toast from "react-hot-toast";
+import { microserviceApi } from "@/services/api";
+import { Share2 } from "lucide-react";
 
 function handleTranscript(session) {
   fetch(`/api/transcripts/${session.id}`)
@@ -15,7 +18,7 @@ function handleTranscript(session) {
     });
 }
 
-export default function SessionCard({ session }) {
+export default function SessionCard({ session, onRefresh }) {
   const [showSummary, setShowSummary] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
   const navigate = useNavigate();
@@ -87,18 +90,45 @@ export default function SessionCard({ session }) {
       {/* Action Buttons */}
       <div className="mt-1">
         {session.status === "Ongoing" && (
-          <button
-            onClick={() => {
-              if (session.isDatabase && session.link) {
-                navigate(session.link);
-              } else {
-                navigate("/meeting");
-              }
-            }}
-            className="bg-gradient-to-r from-[#002266] to-[#0c3aa3] hover:from-[#001744] hover:to-[#0a318a] hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 text-white w-full py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer"
-          >
-            Join Room
-          </button>
+          <div className="flex gap-2 items-center w-full mt-2">
+            <button
+              onClick={() => {
+                if (session.isDatabase && session.link) {
+                  navigate(session.link);
+                } else {
+                  navigate("/meeting");
+                }
+              }}
+              className="flex-1 bg-gradient-to-r from-[#002266] to-[#0c3aa3] hover:from-[#001744] hover:to-[#0a318a] hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 text-white py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer"
+            >
+              Join Room
+            </button>
+            
+            {session.title === "Instant Huddle" && (
+              <button
+                onClick={async () => {
+                  const fullLink = `${window.location.origin}${session.link}`;
+                  try {
+                    await navigator.clipboard.writeText(fullLink);
+                    toast.success("Link copied!");
+                  } catch (e) {
+                    toast.error("Failed to copy link");
+                  }
+                  if (navigator.share) {
+                    navigator.share({
+                      title: 'Join my Huddle Meeting',
+                      text: 'Click the link to join my huddle meeting',
+                      url: fullLink,
+                    }).catch(console.warn);
+                  }
+                }}
+                className="shrink-0 p-2 bg-slate-50 hover:bg-indigo-50 text-slate-500 hover:text-[#1e2b72] border border-slate-200 rounded-lg transition-all duration-200 cursor-pointer flex items-center justify-center h-8 w-8"
+                title="Share Meeting"
+              >
+                <Share2 className="size-4" />
+              </button>
+            )}
+          </div>
         )}
 
         {session.status === "Scheduled" && session.date && (
