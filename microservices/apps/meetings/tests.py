@@ -85,3 +85,45 @@ class LiveKitUnitTests(APITestCase):
         # Send empty payload
         response = self.client.post(url, {}, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_bulk_delete_meetings(self):
+        """
+        Verify that multiple meetings can be deleted at once.
+        """
+        meeting2 = Meeting.objects.create(
+            product=self.product,
+            created_by_user=self.host_user,
+            title="Second Voice Huddle",
+            meeting_code="xyz-defg-hij",
+            status="scheduled",
+            timezone="Asia/Kolkata"
+        )
+        self.assertEqual(Meeting.objects.count(), 2)
+
+        url = reverse("api_list_meetings")
+        data = {
+            "meeting_ids": [str(self.meeting.id), str(meeting2.id)]
+        }
+        response = self.client.delete(url, data, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("deleted successfully", response.data["message"])
+        self.assertEqual(Meeting.objects.count(), 0)
+
+    def test_bulk_delete_meetings_query_params(self):
+        """
+        Verify that multiple meetings can be deleted via query parameters.
+        """
+        meeting2 = Meeting.objects.create(
+            product=self.product,
+            created_by_user=self.host_user,
+            title="Second Voice Huddle",
+            meeting_code="xyz-defg-hij",
+            status="scheduled",
+            timezone="Asia/Kolkata"
+        )
+        self.assertEqual(Meeting.objects.count(), 2)
+
+        url = reverse("api_list_meetings") + f"?meeting_ids={self.meeting.id},{meeting2.id}"
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(Meeting.objects.count(), 0)

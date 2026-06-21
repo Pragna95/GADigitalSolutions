@@ -75,6 +75,11 @@ class ValidateMeetingView(APIView):
                 {"error": "Meeting not found"},
                 status=status.HTTP_404_NOT_FOUND
             )
+        if meeting.status == "completed":
+            return Response(
+                {"error": "This meeting has ended and cannot be joined again"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         participants = [
             p.user.email
             for p in meeting.participants.select_related("user").all()]
@@ -354,10 +359,26 @@ class ListMeetingsView(APIView):
         return Response(data, status=status.HTTP_200_OK)
 
     def delete(self, request):
+        meeting_ids = request.data.get("meeting_ids") or request.query_params.get("meeting_ids")
+        if meeting_ids:
+            if isinstance(meeting_ids, str):
+                meeting_ids = [mid.strip() for mid in meeting_ids.split(",") if mid.strip()]
+            try:
+                deleted_count, _ = Meeting.objects.filter(id__in=meeting_ids).delete()
+                return Response(
+                    {"message": f"{deleted_count} meetings deleted successfully"},
+                    status=status.HTTP_200_OK
+                )
+            except Exception as e:
+                return Response(
+                    {"error": str(e)},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
         meeting_id = request.query_params.get("meeting_id") or request.data.get("meeting_id")
         if not meeting_id:
             return Response(
-                {"error": "meeting_id is required"},
+                {"error": "meeting_id or meeting_ids is required"},
                 status=status.HTTP_400_BAD_REQUEST
             )
         try:
@@ -540,12 +561,18 @@ class LiveKitTokenView(APIView):
         except Meeting.DoesNotExist:
             return Response({"error": "Meeting not found"}, status=status.HTTP_404_NOT_FOUND)
 
+        if meeting.status == "completed":
+            return Response({"error": "This meeting has ended and cannot be joined again"}, status=status.HTTP_400_BAD_REQUEST)
+
         # Ensure the user exists in our DB under this meeting's product
         user = get_user_by_identifier(meeting.product, user_id, name=name)
 
         # Check if the user is the host of this meeting. If so, overwrite role to "host"
         if meeting.created_by_user == user:
             role = "host"
+
+        if role not in ["host", "speaker", "listener"]:
+            role = "speaker"
 
         # Generate join token
         token = generate_join_token(

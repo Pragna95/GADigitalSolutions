@@ -146,23 +146,44 @@ const VideoStage = ({
                                 setShowHandRaise(false);
                                 setShowMenuPage(false);
                             }}
-                            className="relative w-[96px] h-[40px] hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer group"
+                            className={`relative ${
+                                activeParticipants.length === 1
+                                    ? "w-[40px]"
+                                    : activeParticipants.length === 2
+                                    ? "w-[68px]"
+                                    : "w-[96px]"
+                            } h-[40px] hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer group`}
                         >
-                            <img
-                                src="https://randomuser.me/api/portraits/women/65.jpg"
-                                alt=""
-                                className="absolute left-0 top-0 w-10 h-10 rounded-[12px] border-2 border-white object-cover shadow-md group-hover:-translate-x-1 transition-transform duration-300"
-                            />
-                            <img
-                                src="https://randomuser.me/api/portraits/men/60.jpg"
-                                alt=""
-                                className="absolute left-7 top-0 w-10 h-10 rounded-[12px] border-2 border-white object-cover shadow-md transition-transform duration-300"
-                            />
-                            <div className="absolute left-[56px] top-0 w-10 h-10 rounded-[12px] border-2 border-white bg-[#ACBFFF] flex items-center justify-center shadow-md group-hover:translate-x-1 transition-transform duration-300">
-                                <span className="text-[12px] font-semibold text-[#394C84]">
-                                    +{Math.max(0, activeParticipants.length - 2)}
-                                </span>
-                            </div>
+                            {activeParticipants.length === 1 && (
+                                <div className="absolute left-0 top-0 w-10 h-10 rounded-[12px] border-2 border-white bg-slate-200 flex items-center justify-center shadow-md transition-transform duration-300">
+                                    <span className="text-[16px] text-slate-600 font-bold">👤</span>
+                                </div>
+                            )}
+                            {activeParticipants.length === 2 && (
+                                <>
+                                    <div className="absolute left-0 top-0 w-10 h-10 rounded-[12px] border-2 border-white bg-slate-200 flex items-center justify-center shadow-md group-hover:-translate-x-1 transition-transform duration-300">
+                                        <span className="text-[16px] text-slate-600 font-bold">👤</span>
+                                    </div>
+                                    <div className="absolute left-7 top-0 w-10 h-10 rounded-[12px] border-2 border-white bg-slate-300 flex items-center justify-center shadow-md transition-transform duration-300">
+                                        <span className="text-[16px] text-slate-700 font-bold">👤</span>
+                                    </div>
+                                </>
+                            )}
+                            {activeParticipants.length > 2 && (
+                                <>
+                                    <div className="absolute left-0 top-0 w-10 h-10 rounded-[12px] border-2 border-white bg-slate-200 flex items-center justify-center shadow-md group-hover:-translate-x-1 transition-transform duration-300">
+                                        <span className="text-[16px] text-slate-600 font-bold">👤</span>
+                                    </div>
+                                    <div className="absolute left-7 top-0 w-10 h-10 rounded-[12px] border-2 border-white bg-slate-300 flex items-center justify-center shadow-md transition-transform duration-300">
+                                        <span className="text-[16px] text-slate-700 font-bold">👤</span>
+                                    </div>
+                                    <div className="absolute left-[56px] top-0 w-10 h-10 rounded-[12px] border-2 border-white bg-[#ACBFFF] flex items-center justify-center shadow-md group-hover:translate-x-1 transition-transform duration-300">
+                                        <span className="text-[12px] font-semibold text-[#394C84]">
+                                            +{activeParticipants.length - 2}
+                                        </span>
+                                    </div>
+                                </>
+                            )}
                         </button>
 
                         {/* HAND RAISE & EXTRA OVERLAY */}
@@ -173,31 +194,17 @@ const VideoStage = ({
                                     setShowParticipants(false);
                                     setShowMenuPage(false);
                                 }}
-                                className="bg-white hover:bg-yellow-50 h-[38px] px-4 rounded-[22px] flex items-center justify-center shadow-lg border border-yellow-200 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer gap-2"
+                                className="relative w-10 h-10 rounded-[12px] bg-white border border-slate-200 flex items-center justify-center shadow-md hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
                             >
-                                <span className="text-[18px] leading-none">✋</span>
-                                <span id="hand-count" className="text-[15px] font-bold leading-none text-slate-800"
-                                    style={{
-                                        display: "inline-flex",
-                                        alignItems: "center",
-                                        justifyContent: "center",
-                                        minWidth: "20px",
-                                        background: "#fbbf24",
-                                        color: "#1e293b",
-                                        borderRadius: "999px",
-                                        padding: "2px 8px",
-                                        fontWeight: 800,
-                                        fontSize: "13px",
-                                        boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
-                                    }}
-                                >
-                                    {handRaiseCount}
-                                </span>
+                                <span className="text-[18px]">✋</span>
+                                {handRaiseCount > 0 && (
+                                    <span 
+                                        className="absolute -top-1.5 -right-1.5 bg-amber-500 text-slate-900 text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center shadow-sm border border-white"
+                                    >
+                                        {handRaiseCount}
+                                    </span>
+                                )}
                             </button>
-
-                            <div className="w-10 h-10 rounded-[12px] border-2 border-white bg-[#ACBFFF] flex items-center justify-center shadow-md">
-                                <span className="text-[16px] text-[#394C84]">👤</span>
-                            </div>
                         </div>
                     </div>
 
@@ -291,6 +298,16 @@ const VideoStage = ({
                                     <ChevronRight size={22} />
                                 </button>
                             </>
+                        )}
+
+                        {(activeParticipants.length <= 1 && liveParticipants.length <= 1 && remoteStreams.length === 0) && (
+                            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 bg-slate-900/90 backdrop-blur-md border border-slate-800 shadow-[0_8px_32px_rgba(0,0,0,0.4)] rounded-2xl px-6 py-3 flex items-center gap-3 animate-fade-in">
+                                <span className="text-xl animate-bounce-subtle">👤</span>
+                                <div className="flex flex-col">
+                                    <p className="text-sm font-bold text-white leading-tight">You are the only one here</p>
+                                    <p className="text-[11px] text-slate-400">Waiting for others to join...</p>
+                                </div>
+                            </div>
                         )}
                     </div>
                 </div>

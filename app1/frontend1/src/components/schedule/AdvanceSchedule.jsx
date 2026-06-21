@@ -222,7 +222,7 @@ export default function AdvanceSchedule({
         try {
             setLoading(true);
             const token = localStorage.getItem("token");
-            const apiKey = import.meta.env.VITE_X_API_KEY || localStorage.getItem("api_key") || "";
+            const apiKey = import.meta.env.VITE_X_API_KEY || sessionStorage.getItem("api_key") || localStorage.getItem("api_key") || "";
 
             let userEmail = localStorage.getItem("email") || "host@example.com";
             let userName = localStorage.getItem("name") || "Host User";

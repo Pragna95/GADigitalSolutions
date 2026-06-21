@@ -489,7 +489,7 @@ const MeetingRoom = () => {
 
     const updateParticipantState = async (mic, video, hand) => {
         try {
-            const apiKey = import.meta.env.VITE_X_API_KEY || localStorage.getItem("api_key") || "";
+            const apiKey = import.meta.env.VITE_X_API_KEY || sessionStorage.getItem("api_key") || localStorage.getItem("api_key") || "";
             console.log("meetingId =", meetingId);
             await axios.post(
                 `${API_URL}/participant/update/`,

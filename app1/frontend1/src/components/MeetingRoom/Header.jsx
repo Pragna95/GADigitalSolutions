@@ -3,6 +3,7 @@ import { Monitor, Circle, PhoneOff } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
 const Header = ({
+    meetingTitle,
     isRecording,
     setIsRecording,
     recordingStopped,
@@ -14,6 +15,15 @@ const Header = ({
     const navigate = useNavigate();
     const { company, letter, api_key, meeting_id } = useParams();
 
+    const formattedDate = React.useMemo(() => {
+        const date = new Date();
+        const weekday = date.toLocaleDateString("en-US", { weekday: "long" });
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        return `${weekday}, ${day}-${month}-${year}`;
+    }, []);
+
     return (
         <header className="h-[78px] bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0">
             {/* LEFT */}
@@ -24,10 +34,10 @@ const Header = ({
 
                 <div className="leading-tight">
                     <h2 className="text-[17px] font-bold text-slate-800">
-                        Huddle_Name
+                        {meetingTitle || "Huddle"}
                     </h2>
                     <p className="text-[12px] text-slate-400 mt-1">
-                        Tuesday, 07-04-2026
+                        {formattedDate}
                     </p>
                 </div>
 

@@ -16,6 +16,9 @@ import { useNavigate } from "react-router-dom";
 export default function CreateHuddle({ onAddSession, onCancelSession }) {
   const [openSchedule, setOpenSchedule] = useState(false);
   const [showInstantModal, setShowInstantModal] = useState(false);
+  const [showInstantSetupModal, setShowInstantSetupModal] = useState(false);
+  const [instantTitle, setInstantTitle] = useState("Instant Huddle");
+  const [instantDescription, setInstantDescription] = useState("Quick instant meeting created with one click");
   const [instantMeetingLink, setInstantMeetingLink] = useState("");
   const [instantMeetingId, setInstantMeetingId] = useState("");
   const [copied, setCopied] = useState(false);
@@ -29,7 +32,7 @@ export default function CreateHuddle({ onAddSession, onCancelSession }) {
     try {
       setLoading(true);
       const token = localStorage.getItem("token");
-      const apiKey = import.meta.env.VITE_X_API_KEY || localStorage.getItem("api_key") || "";
+      const apiKey = import.meta.env.VITE_X_API_KEY || sessionStorage.getItem("api_key") || localStorage.getItem("api_key") || "";
 
       let userEmail = localStorage.getItem("email") || "host@example.com";
       let userName = localStorage.getItem("name") || "Host User";
@@ -52,8 +55,8 @@ export default function CreateHuddle({ onAddSession, onCancelSession }) {
       const response = await microserviceApi.post("/api/meeting/schedule/", {
         email: userEmail,
         name: userName,
-        title: "Instant Huddle",
-        description: "Quick instant meeting created with one click",
+        title: instantTitle,
+        description: instantDescription,
         datetime: new Date().toISOString(),
         participant_emails: [],
       }, {
@@ -74,6 +77,7 @@ export default function CreateHuddle({ onAddSession, onCancelSession }) {
 
         setInstantMeetingLink(fullLink);
         setInstantMeetingId(meetingId);
+        setShowInstantSetupModal(false);
         setShowInstantModal(true);
         toast.success("Instant meeting created!");
       } else {
@@ -120,7 +124,7 @@ export default function CreateHuddle({ onAddSession, onCancelSession }) {
 
     try {
       setInviting(true);
-      const apiKey = import.meta.env.VITE_X_API_KEY || localStorage.getItem("api_key") || "";
+      const apiKey = import.meta.env.VITE_X_API_KEY || sessionStorage.getItem("api_key") || localStorage.getItem("api_key") || "";
       const invitePromises = emails.map(async (singleEmail) => {
         return microserviceApi.post(
           "/api/meeting/invite/",
@@ -206,7 +210,11 @@ export default function CreateHuddle({ onAddSession, onCancelSession }) {
 
   {/* Instant Meeting */}
   <DropdownMenuItem
-    onClick={handleInstantMeeting}
+    onClick={() => {
+      setInstantTitle("Instant Huddle");
+      setInstantDescription("Quick instant meeting created with one click");
+      setShowInstantSetupModal(true);
+    }}
     className="
       rounded-2xl
       p-4
@@ -226,7 +234,7 @@ export default function CreateHuddle({ onAddSession, onCancelSession }) {
         Instant Meeting
       </p>
       <p className="text-xs text-gray-500">
-        Start right now with one click
+        Start right now with custom details
       </p>
     </div>
   </DropdownMenuItem>
@@ -267,6 +275,71 @@ export default function CreateHuddle({ onAddSession, onCancelSession }) {
         onAddSession={onAddSession}
         onCancelSession={onCancelSession}
       />
+
+      {/* Setup Instant Meeting Details Modal */}
+      <Dialog open={showInstantSetupModal} onOpenChange={setShowInstantSetupModal}>
+        <DialogContent className="w-[480px] max-w-[90vw] p-6 bg-white border border-slate-100 rounded-3xl shadow-2xl animate-scale-in text-slate-800">
+          <div className="flex flex-col space-y-4">
+            <div className="flex items-center gap-3 pb-2 border-b">
+              <div className="p-2.5 bg-[#e0e7ff] rounded-2xl shadow-sm text-[#1e2b72]">
+                <Zap className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-extrabold text-slate-900 tracking-tight">
+                  Instant Meeting Details
+                </h2>
+                <p className="text-xs text-slate-400 font-semibold">
+                  Provide a title and description for your instant meeting.
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={(e) => { e.preventDefault(); handleInstantMeeting(); }} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-600">Meeting Title</label>
+                <input
+                  type="text"
+                  required
+                  value={instantTitle}
+                  onChange={(e) => setInstantTitle(e.target.value)}
+                  className="w-full px-3.5 h-11 border border-slate-200 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 rounded-xl text-sm outline-none transition-all duration-200 bg-white font-medium"
+                  placeholder="e.g. Quick Standup"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-600">Description</label>
+                <textarea
+                  value={instantDescription}
+                  onChange={(e) => setInstantDescription(e.target.value)}
+                  rows={3}
+                  className="w-full p-3.5 border border-slate-200 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 rounded-xl text-sm outline-none transition-all duration-200 bg-white font-medium resize-none"
+                  placeholder="Describe your meeting..."
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1 py-5 rounded-2xl font-bold border-slate-200 text-slate-600 hover:bg-slate-50 active:scale-98 transition-all cursor-pointer text-sm"
+                  onClick={() => setShowInstantSetupModal(false)}
+                >
+                  Cancel
+                </Button>
+
+                <Button
+                  type="submit"
+                  disabled={loading}
+                  className="flex-1 bg-[#1e2b72] hover:bg-[#152060] text-white py-5 rounded-2xl font-bold shadow-md hover:shadow-lg active:scale-98 transition-all cursor-pointer text-sm disabled:opacity-50"
+                >
+                  {loading ? "Creating..." : "Create Meeting"}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Google Meet-Style Instant Meeting Modal */}
       <Dialog open={showInstantModal} onOpenChange={setShowInstantModal}>

@@ -52,6 +52,31 @@ const Meeting = () => {
     const participantName = searchParams.get("name") || "Andaya";
     const displayName = participantName;
     const [userRole, setUserRole] = useState(searchParams.get("role") || "participant");
+    const [meetingTitle, setMeetingTitle] = useState("Huddle");
+
+    useEffect(() => {
+        const fetchMeetingDetails = async () => {
+            try {
+                let response;
+                if (company && api_key) {
+                    response = await axios.get(
+                        `http://127.0.0.1:8000/api/meeting/validate/${company}/${api_key}/${meetingId}/`
+                    );
+                } else {
+                    response = await axios.get(
+                        `http://127.0.0.1:8000/api/meeting/validate-lobby/${meetingId}/`
+                    );
+                }
+                if (response.data && response.data.title) {
+                    setMeetingTitle(response.data.title);
+                }
+            } catch (err) {
+                console.error("Failed to fetch meeting details:", err);
+            }
+        };
+        fetchMeetingDetails();
+    }, [company, api_key, meetingId]);
+
 
     // Generate unique random UUID per tab
     const generateFreshId = () => {
@@ -170,104 +195,151 @@ const Meeting = () => {
         const connectRoom = async () => {
             try {
                 // Fetch the initial state first to avoid state closure mismatch
-                const initialState = await fetchParticipantState();
-                const initialMic = initialState.mic_on;
-                const initialVideo = initialState.video_on;
+                let initialMic = true;
+                let initialVideo = true;
+                try {
+                    const initialState = await fetchParticipantState();
+                    initialMic = initialState.mic_on;
+                    initialVideo = initialState.video_on;
+                } catch (e) {
+                    console.warn("Failed to fetch initial participant state:", e);
+                }
 
-                // 1. Fetch token from backend
-                const tokenResponse = await axios.post("http://127.0.0.1:8000/api/meetings/token/", {
-                    meeting_id: meetingId,
-                    user_id: userId,
-                    name: participantName,
-                    role: userRole
-                });
-                const { token, url, role: returnedRole } = tokenResponse.data;
-                if (returnedRole) {
-                    setUserRole(returnedRole);
+                let token = "";
+                let url = "";
+                try {
+                    // 1. Fetch token from backend
+                    const tokenResponse = await axios.post("http://127.0.0.1:8000/api/meetings/token/", {
+                        meeting_id: meetingId,
+                        user_id: userId,
+                        name: participantName,
+                        role: userRole
+                    });
+                    token = tokenResponse.data.token;
+                    url = tokenResponse.data.url;
+                    const returnedRole = tokenResponse.data.role;
+                    if (returnedRole) {
+                        setUserRole(returnedRole);
+                    }
+                } catch (e) {
+                    console.warn("Failed to fetch LiveKit token from backend:", e);
                 }
 
                 if (!active) return;
 
-                // 2. Connect to LiveKit SFU Server
-                await room.connect(url, token);
-                console.log("LiveKit Room Connected:", room.name);
+                if (url && token) {
+                    try {
+                        // 2. Connect to LiveKit SFU Server
+                        await room.connect(url, token);
+                        console.log("LiveKit Room Connected:", room.name);
 
-                // 3. Register listeners
-                const syncMicState = (publication, participant) => {
-                    if (publication.kind === "audio") {
-                        setRemoteMicStates(prev => ({
-                            ...prev,
-                            [participant.identity]: !publication.isMuted
-                        }));
-                    }
-                };
+                        // 3. Register listeners
+                        const syncMicState = (publication, participant) => {
+                            if (publication.kind === "audio") {
+                                setRemoteMicStates(prev => ({
+                                    ...prev,
+                                    [participant.identity]: !publication.isMuted
+                                }));
+                            }
+                        };
 
-                room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
-                    updateRemoteParticipantStream(participant);
-                    syncMicState(publication, participant);
-                });
-                room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
-                    updateRemoteParticipantStream(participant);
-                });
-                room.on(RoomEvent.TrackMuted, (publication, participant) => {
-                    syncMicState(publication, participant);
-                });
-                room.on(RoomEvent.TrackUnmuted, (publication, participant) => {
-                    syncMicState(publication, participant);
-                });
-                room.on(RoomEvent.ParticipantConnected, (participant) => {
-                    updateRemoteParticipantStream(participant);
-                });
-                room.on(RoomEvent.ParticipantDisconnected, (participant) => {
-                    delete remoteStreamsRef.current[participant.identity];
-                    setRemoteStreams(prev => prev.filter(item => item.peerId !== participant.identity));
-                    setRoomPeers(prev => {
-                        const next = { ...prev };
-                        delete next[participant.identity];
-                        return next;
-                    });
-                    setRemoteMicStates(prev => {
-                        const next = { ...prev };
-                        delete next[participant.identity];
-                        return next;
-                    });
-                });
+                        room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+                            updateRemoteParticipantStream(participant);
+                            syncMicState(publication, participant);
+                        });
+                        room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
+                            updateRemoteParticipantStream(participant);
+                        });
+                        room.on(RoomEvent.TrackMuted, (publication, participant) => {
+                            syncMicState(publication, participant);
+                        });
+                        room.on(RoomEvent.TrackUnmuted, (publication, participant) => {
+                            syncMicState(publication, participant);
+                        });
+                        room.on(RoomEvent.ParticipantConnected, (participant) => {
+                            updateRemoteParticipantStream(participant);
+                        });
+                        room.on(RoomEvent.ParticipantDisconnected, (participant) => {
+                            delete remoteStreamsRef.current[participant.identity];
+                            setRemoteStreams(prev => prev.filter(item => item.peerId !== participant.identity));
+                            setRoomPeers(prev => {
+                                const next = { ...prev };
+                                delete next[participant.identity];
+                                return next;
+                            });
+                            setRemoteMicStates(prev => {
+                                const next = { ...prev };
+                                delete next[participant.identity];
+                                return next;
+                            });
+                        });
 
-                // 4. Publish local audio/video tracks
-                await room.localParticipant.setMicrophoneEnabled(initialMic);
-                await room.localParticipant.setCameraEnabled(initialVideo);
+                        // 4. Publish local audio/video tracks
+                        await room.localParticipant.setMicrophoneEnabled(initialMic);
+                        await room.localParticipant.setCameraEnabled(initialVideo);
 
-                // Construct local MediaStream for UI video tag
-                const localStream = new MediaStream();
-                const localAudioStream = new MediaStream();
+                        // Construct local MediaStream for UI video tag
+                        const localStream = new MediaStream();
+                        const localAudioStream = new MediaStream();
 
-                for (const pub of room.localParticipant.videoTrackPublications.values()) {
-                    if (pub.track?.mediaStreamTrack) {
-                        localStream.addTrack(pub.track.mediaStreamTrack);
+                        for (const pub of room.localParticipant.videoTrackPublications.values()) {
+                            if (pub.track?.mediaStreamTrack) {
+                                localStream.addTrack(pub.track.mediaStreamTrack);
+                            }
+                        }
+                        for (const pub of room.localParticipant.audioTrackPublications.values()) {
+                            if (pub.track?.mediaStreamTrack) {
+                                localStream.addTrack(pub.track.mediaStreamTrack);
+                                localAudioStream.addTrack(pub.track.mediaStreamTrack);
+                            }
+                        }
+
+                        localStreamRef.current = localStream;
+                        if (localVideoRef.current) {
+                            localVideoRef.current.srcObject = localStream;
+                        }
+
+                        if (selfMonitorRef.current) {
+                            selfMonitorRef.current.srcObject = localAudioStream;
+                            if (initialMic) {
+                                selfMonitorRef.current.play().catch(e => console.log("Self monitor play blocked:", e));
+                            }
+                        }
+
+                        setIsWebRtcReady(true);
+                        return; // Successfully connected to LiveKit!
+                    } catch (lkErr) {
+                        console.error("LiveKit connection attempt failed, falling back to compatibility mode:", lkErr);
                     }
                 }
-                for (const pub of room.localParticipant.audioTrackPublications.values()) {
-                    if (pub.track?.mediaStreamTrack) {
-                        localStream.addTrack(pub.track.mediaStreamTrack);
-                        localAudioStream.addTrack(pub.track.mediaStreamTrack);
+
+                // Fallback / Compatibility mode (if lk connection failed or no token/url)
+                toast.success("Connected to meeting room (compatibility mode)", {
+                    duration: 3000
+                });
+                try {
+                    const constraints = {
+                        video: initialVideo ? { width: 1280, height: 720 } : false,
+                        audio: initialMic
+                    };
+                    const fallbackStream = await navigator.mediaDevices.getUserMedia(constraints);
+                    localStreamRef.current = fallbackStream;
+                    if (localVideoRef.current) {
+                        localVideoRef.current.srcObject = fallbackStream;
                     }
-                }
-
-                localStreamRef.current = localStream;
-                if (localVideoRef.current) {
-                    localVideoRef.current.srcObject = localStream;
-                }
-
-                if (selfMonitorRef.current) {
-                    selfMonitorRef.current.srcObject = localAudioStream;
-                    if (initialMic) {
+                    if (selfMonitorRef.current && initialMic) {
+                        const localAudioStream = new MediaStream();
+                        fallbackStream.getAudioTracks().forEach(track => localAudioStream.addTrack(track));
+                        selfMonitorRef.current.srcObject = localAudioStream;
                         selfMonitorRef.current.play().catch(e => console.log("Self monitor play blocked:", e));
                     }
+                } catch (mediaErr) {
+                    console.warn("Failed to get fallback local user media:", mediaErr);
                 }
 
-                setIsWebRtcReady(true);
             } catch (err) {
-                console.error("Failed to connect to LiveKit SFU:", err);
+                console.error("Critical failure during connectRoom:", err);
+                toast.error("Failed to join meeting room.");
             }
         };
 
@@ -537,7 +609,7 @@ const Meeting = () => {
     const toggleMic = async () => {
         const newMicState = !isMicOn;
         setIsMicOn(newMicState);
-        if (lkRoomRef.current) {
+        if (lkRoomRef.current && lkRoomRef.current.state === "connected") {
             await lkRoomRef.current.localParticipant.setMicrophoneEnabled(newMicState);
         }
         if (localStreamRef.current) {
@@ -554,7 +626,7 @@ const Meeting = () => {
     const toggleVideo = async () => {
         const newVideoState = !isVideoOn;
         setIsVideoOn(newVideoState);
-        if (lkRoomRef.current) {
+        if (lkRoomRef.current && lkRoomRef.current.state === "connected") {
             await lkRoomRef.current.localParticipant.setCameraEnabled(newVideoState);
             setTimeout(() => {
                 const room = lkRoomRef.current;
@@ -570,6 +642,28 @@ const Meeting = () => {
                     localVideoRef.current.srcObject = localStream;
                 }
             }, 200);
+        } else {
+            if (localStreamRef.current) {
+                localStreamRef.current.getVideoTracks().forEach(t => t.enabled = newVideoState);
+            }
+            if (newVideoState && (!localStreamRef.current || localStreamRef.current.getVideoTracks().length === 0)) {
+                try {
+                    const freshStream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
+                    const videoTrack = freshStream.getVideoTracks()[0];
+                    if (videoTrack) {
+                        if (!localStreamRef.current) {
+                            localStreamRef.current = new MediaStream();
+                        }
+                        localStreamRef.current.addTrack(videoTrack);
+                        if (localVideoRef.current) {
+                            localVideoRef.current.srcObject = null;
+                            localVideoRef.current.srcObject = localStreamRef.current;
+                        }
+                    }
+                } catch (err) {
+                    console.warn("Failed to re-acquire camera track in fallback:", err);
+                }
+            }
         }
         updateParticipantState(isMicOn, newVideoState, isHandRaised);
     };
@@ -766,6 +860,7 @@ const Meeting = () => {
             )}
 
             <Header
+                meetingTitle={meetingTitle}
                 isRecording={isRecording}
                 setIsRecording={setIsRecording}
                 recordingStopped={recordingStopped}
@@ -827,6 +922,7 @@ const Meeting = () => {
             </main>
 
             <Footer
+                meetingId={meetingId}
                 isMicOn={isMicOn}
                 toggleMic={toggleMic}
                 isVideoOn={isVideoOn}

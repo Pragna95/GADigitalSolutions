@@ -36,7 +36,7 @@ export default function AddParticipantModal({ open, setOpen, meetingId }) {
 
         setLoading(true);
         try {
-            const apiKey = import.meta.env.VITE_X_API_KEY || localStorage.getItem("api_key") || "";
+            const apiKey = import.meta.env.VITE_X_API_KEY || sessionStorage.getItem("api_key") || localStorage.getItem("api_key") || "";
             const invitePromises = emails.map(async (singleEmail) => {
                 return microserviceApi.post(
                     "/api/meeting/invite/",

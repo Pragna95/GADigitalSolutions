@@ -147,7 +147,14 @@ function App() {
 
           {/* Meetings */}
 
-          <Route path="/meeting" element={<Meeting />} />
+          <Route
+            path="/meeting"
+            element={
+              <ProtectedRoute>
+                <Meeting />
+              </ProtectedRoute>
+            }
+          />
 
           {/* New professional format */}
           {/* <Route
@@ -216,27 +223,47 @@ function App() {
 
           <Route
             path="/meeting/:company/:letter/:api_key/room/:meeting_id"
-            element={<Meeting />}
+            element={
+              <ProtectedRoute>
+                <Meeting />
+              </ProtectedRoute>
+            }
           />
 
           <Route
             path="/meeting/:company/:api_key/room/:meeting_id"
-            element={<Meeting />}
+            element={
+              <ProtectedRoute>
+                <Meeting />
+              </ProtectedRoute>
+            }
           />
 
           <Route
             path="/:company/:letter/:api_key/room/:meeting_id"
-            element={<Meeting />}
+            element={
+              <ProtectedRoute>
+                <Meeting />
+              </ProtectedRoute>
+            }
           />
 
           <Route
             path="/room/:meeting_id"
-            element={<Meeting />}
+            element={
+              <ProtectedRoute>
+                <Meeting />
+              </ProtectedRoute>
+            }
           />
 
           <Route
             path="/audio/:meeting_id"
-            element={<MeetingRoom />}
+            element={
+              <ProtectedRoute>
+                <MeetingRoom />
+              </ProtectedRoute>
+            }
           />
           <Route path="/thank-you" element={<ThankYou />} />
 

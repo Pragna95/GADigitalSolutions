@@ -20,7 +20,7 @@ export default function ScheduledMeetings({ refreshTrigger }) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   const token = localStorage.getItem("token");
-  const apiKey = import.meta.env.VITE_X_API_KEY || localStorage.getItem("api_key") || "";
+  const apiKey = import.meta.env.VITE_X_API_KEY || sessionStorage.getItem("api_key") || localStorage.getItem("api_key") || "";
 
   const fetchMeetings = async () => {
     try {

@@ -18,7 +18,7 @@ function handleTranscript(session) {
     });
 }
 
-export default function SessionCard({ session, onRefresh }) {
+export default function SessionCard({ session, onRefresh, isSelected, onToggleSelect }) {
   const [showSummary, setShowSummary] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
   const navigate = useNavigate();
@@ -32,9 +32,20 @@ export default function SessionCard({ session, onRefresh }) {
     >
       {/* Header */}
       <div className="flex justify-between items-center mb-1.5">
-        <p className="text-[11px] font-bold text-[#1e2b72] uppercase tracking-wider">
-          {session.project}
-        </p>
+        <div className="flex items-center gap-2">
+          {onToggleSelect && (
+            <input
+              type="checkbox"
+              checked={isSelected || false}
+              onChange={onToggleSelect}
+              onClick={(e) => e.stopPropagation()}
+              className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+            />
+          )}
+          <p className="text-[11px] font-bold text-[#1e2b72] uppercase tracking-wider">
+            {session.project}
+          </p>
+        </div>
 
         {session.status === "Ongoing" && (
           <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm border border-red-100">

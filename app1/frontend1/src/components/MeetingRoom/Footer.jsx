@@ -15,8 +15,10 @@ import {
     UserMinus,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
+import { toast } from "react-hot-toast";
 
 const Footer = ({
+    meetingId,
     isMicOn,
     toggleMic,
     isVideoOn,
@@ -39,6 +41,7 @@ const Footer = ({
     userId,
 }) => {
     const [isKickDialogOpen, setIsKickDialogOpen] = React.useState(false);
+    const [isHostControlsOpen, setIsHostControlsOpen] = React.useState(false);
     return (
         <footer className="h-[95px] bg-[#f8fafc] border-t border-slate-100 flex items-center justify-between px-6 shrink-0 shadow-[0_-4px_20px_rgba(0,0,0,0.015)]">
             {/* LEFT */}
@@ -47,8 +50,16 @@ const Footer = ({
                     Meet ID
                 </span>
 
-                <div className="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-xl flex items-center gap-2 text-sm font-semibold shadow-sm transition-all duration-200 cursor-pointer active:scale-95 hover:shadow-md">
-                    NFT-rdtve9
+                <div
+                    onClick={() => {
+                        if (meetingId) {
+                            navigator.clipboard.writeText(meetingId);
+                            toast.success("Meeting ID copied to clipboard!");
+                        }
+                    }}
+                    className="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-xl flex items-center gap-2 text-sm font-semibold shadow-sm transition-all duration-200 cursor-pointer active:scale-95 hover:shadow-md"
+                >
+                    {meetingId || "Unknown"}
                     <Copy size={14} />
                 </div>
             </div>
@@ -133,31 +144,64 @@ const Footer = ({
                     className="w-11 h-11 rounded-xl flex items-center justify-center text-slate-600 hover:bg-slate-100 hover:scale-110 active:scale-95 transition-all duration-205 cursor-pointer hover:shadow-sm border border-transparent hover:border-slate-100"
                 >
                     <UserPlus size={18} />
-                </button>                {/* HOST MODERATION */}
-                {userRole === "host" && (
-                    <>
-                        {/* KICK PARTICIPANT */}
+                </button>
+                {/* HOST MODERATION */}
+                {userRole === "host" ? (
+                    <div className="flex items-center gap-1.5 bg-slate-100/60 hover:bg-slate-100 rounded-2xl px-1.5 py-0.5 border border-slate-200/50 transition-all duration-300">
+                        {/* THREE DOTS BUTTON */}
                         <button
-                            onClick={() => setIsKickDialogOpen(true)}
-                            className="w-11 h-11 rounded-xl flex items-center justify-center text-red-500 hover:bg-red-55 hover:scale-110 active:scale-95 transition-all duration-205 cursor-pointer hover:shadow-sm border border-transparent hover:border-red-100"
-                            title="Kick Participant"
+                            onClick={() => setIsHostControlsOpen(!isHostControlsOpen)}
+                            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-250 cursor-pointer ${
+                                isHostControlsOpen
+                                    ? "bg-white text-indigo-600 shadow-sm border border-slate-150"
+                                    : "text-slate-600 hover:bg-white/80"
+                            }`}
+                            title="Host Controls"
                         >
-                            <UserMinus size={18} />
+                            <MoreVertical
+                                size={18}
+                                className={`transition-transform duration-300 ${
+                                    isHostControlsOpen ? "rotate-90 text-indigo-600 font-bold" : "text-slate-500"
+                                }`}
+                            />
                         </button>
 
-                        {/* END MEETING */}
-                        <button
-                            onClick={() => {
-                                if (window.confirm("Are you sure you want to end the meeting for all participants?")) {
-                                    handleEndMeeting();
-                                }
-                            }}
-                            className="w-11 h-11 rounded-xl flex items-center justify-center bg-red-500 text-white hover:bg-red-650 hover:scale-110 active:scale-95 transition-all duration-205 cursor-pointer hover:shadow-md shadow-sm"
-                            title="End Meeting for All"
+                        {/* HOST CONTROLS INLINE EXPANSION */}
+                        <div
+                            className={`flex items-center gap-1.5 transition-all duration-300 ease-out overflow-hidden ${
+                                isHostControlsOpen
+                                    ? "max-w-[120px] opacity-100 ml-1"
+                                    : "max-w-0 opacity-0 ml-0 pointer-events-none"
+                            }`}
                         >
-                            <PhoneOff size={18} />
-                        </button>
-                    </>
+                            {/* KICK PARTICIPANT */}
+                            <button
+                                onClick={() => setIsKickDialogOpen(true)}
+                                className="w-[34px] h-[34px] rounded-lg flex items-center justify-center text-red-500 hover:bg-red-50 active:scale-95 transition-all cursor-pointer border border-transparent hover:border-red-100 shrink-0"
+                                title="Kick Participant"
+                            >
+                                <UserMinus size={16} />
+                            </button>
+
+                            {/* END MEETING */}
+                            <button
+                                onClick={() => {
+                                    if (window.confirm("Are you sure you want to end the meeting for all participants?")) {
+                                        handleEndMeeting();
+                                    }
+                                }}
+                                className="w-[34px] h-[34px] rounded-lg flex items-center justify-center bg-red-500 text-white hover:bg-red-600 active:scale-95 transition-all cursor-pointer shadow-sm shrink-0"
+                                title="End Meeting for All"
+                            >
+                                <PhoneOff size={15} />
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    // Regular user view gets the standard non-functional three-dots icon
+                    <div className="w-11 h-11 flex items-center justify-center text-slate-300">
+                        <MoreVertical size={18} />
+                    </div>
                 )}
             </div>
 

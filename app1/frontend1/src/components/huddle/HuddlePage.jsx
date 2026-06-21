@@ -6,7 +6,7 @@ import ScheduledMeetings from "./ScheduledMeetings";
 import MiniCalendar from "../calender/MiniCalender";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
-import { Search, Filter, Check } from "lucide-react";
+import { Search, Filter, Check, Trash2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -37,6 +37,64 @@ export default function HuddlePage() {
   const [activeTab, setActiveTab] = useState("Ongoing");
   const [ongoingFilter, setOngoingFilter] = useState("All"); // "All", "Instant", "Scheduled"
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [selectedMeetings, setSelectedMeetings] = useState(new Set());
+
+  const handleToggleSelect = (meetingId) => {
+    setSelectedMeetings((prev) => {
+      const next = new Set(prev);
+      if (next.has(meetingId)) {
+        next.delete(meetingId);
+      } else {
+        next.add(meetingId);
+      }
+      return next;
+    });
+  };
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    setSelectedMeetings(new Set());
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedMeetings.size === 0) return;
+
+    if (!window.confirm(`Are you sure you want to delete the ${selectedMeetings.size} selected instant meeting(s)?`)) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("token");
+      const apiKey = import.meta.env.VITE_X_API_KEY || sessionStorage.getItem("api_key") || localStorage.getItem("api_key") || "";
+      const headers = {
+        "Content-Type": "application/json"
+      };
+      if (token && token !== "null" && token !== "undefined") {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      if (apiKey && apiKey !== "null" && apiKey !== "undefined") {
+        headers["x-api-key"] = apiKey;
+      }
+
+      const res = await microserviceApi.delete("/api/meetings/", {
+        headers,
+        data: {
+          meeting_ids: Array.from(selectedMeetings)
+        }
+      });
+
+      if (res.status === 200) {
+        toast.success(res.data?.message || "Meetings deleted successfully");
+        setSelectedMeetings(new Set());
+        setRefreshTrigger((prev) => prev + 1);
+      } else {
+        toast.error("Failed to delete meetings");
+      }
+    } catch (err) {
+      console.error("Error deleting meetings", err);
+      toast.error("Error deleting meetings");
+    }
+  };
   const [meetingId, setMeetingId] = useState("");
   const [pendingSession, setPendingSession] = useState(null);
   const [statusDialog, setStatusDialog] = useState({
@@ -141,7 +199,7 @@ export default function HuddlePage() {
     const fetchDbMeetings = async () => {
       try {
         const token = localStorage.getItem("token");
-        const apiKey = import.meta.env.VITE_X_API_KEY || localStorage.getItem("api_key") || "";
+        const apiKey = import.meta.env.VITE_X_API_KEY || sessionStorage.getItem("api_key") || localStorage.getItem("api_key") || "";
         const headers = {};
         if (token && token !== "null" && token !== "undefined") {
           headers["Authorization"] = `Bearer ${token}`;
@@ -168,10 +226,10 @@ export default function HuddlePage() {
   const ongoingDbSessions = dbMeetings
     .filter(m => {
       const userEmail = localStorage.getItem("email");
-      const cutoff = localStorage.getItem("instant_meeting_cutoff");
+      const cutoff = sessionStorage.getItem("instant_meeting_cutoff");
       
       const isInstant = m.title === "Instant Huddle";
-      const isNewInstant = isInstant && cutoff && m.created_at && new Date(m.created_at) >= new Date(cutoff);
+      const isNewInstant = isInstant && (!cutoff || (m.created_at && new Date(m.created_at) >= new Date(cutoff)));
       
       const isInstantOngoing = isInstant &&
                                isNewInstant &&
@@ -229,8 +287,8 @@ export default function HuddlePage() {
   }, [location.state]);
 
   useEffect(() => {
-    if (!localStorage.getItem("instant_meeting_cutoff")) {
-      localStorage.setItem("instant_meeting_cutoff", new Date().toISOString());
+    if (!sessionStorage.getItem("instant_meeting_cutoff")) {
+      sessionStorage.setItem("instant_meeting_cutoff", new Date().toISOString());
     }
   }, []);
   const navigate = useNavigate();
@@ -274,7 +332,7 @@ export default function HuddlePage() {
             {TABS.map((tab) => (
               <button
                 key={tab}
-                onClick={() => setActiveTab(tab)}
+                onClick={() => handleTabChange(tab)}
                 className={`text-sm font-semibold pb-2 relative transition-all duration-300 cursor-pointer ${activeTab === tab
                   ? "text-[#1e2b72] scale-105"
                   : "text-gray-500 hover:text-[#1e2b72]"
@@ -289,37 +347,53 @@ export default function HuddlePage() {
           </div>
           
           {activeTab === "Ongoing" && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="text-xs text-slate-500 hover:text-[#1e2b72] flex items-center gap-1.5 cursor-pointer transition-all border border-slate-200 hover:border-[#1e2b72]/30 px-3 py-1.5 rounded-xl bg-white shadow-sm font-bold active:scale-98">
-                  <Filter className="size-3.5 text-indigo-500" />
-                  <span>Show: {ongoingFilter === "All" ? "All Ongoing" : ongoingFilter === "Instant" ? "Instant Only" : "Scheduled Only"}</span>
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48 bg-white border border-slate-200 rounded-2xl shadow-xl p-2 z-50 animate-scale-in">
-                <DropdownMenuItem
-                  onClick={() => setOngoingFilter("All")}
-                  className="flex items-center justify-between rounded-xl px-3 py-2 cursor-pointer hover:bg-indigo-50/50 text-xs font-semibold text-slate-700 hover:text-[#1e2b72] outline-none"
-                >
-                  <span>All Ongoing</span>
-                  {ongoingFilter === "All" && <Check className="size-3.5 text-[#1e2b72]" />}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => setOngoingFilter("Instant")}
-                  className="flex items-center justify-between rounded-xl px-3 py-2 cursor-pointer hover:bg-indigo-50/50 text-xs font-semibold text-slate-700 hover:text-[#1e2b72] outline-none"
-                >
-                  <span>Instant Only</span>
-                  {ongoingFilter === "Instant" && <Check className="size-3.5 text-[#1e2b72]" />}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => setOngoingFilter("Scheduled")}
-                  className="flex items-center justify-between rounded-xl px-3 py-2 cursor-pointer hover:bg-indigo-50/50 text-xs font-semibold text-slate-700 hover:text-[#1e2b72] outline-none"
-                >
-                  <span>Scheduled Only</span>
-                  {ongoingFilter === "Scheduled" && <Check className="size-3.5 text-[#1e2b72]" />}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleDeleteSelected}
+                disabled={selectedMeetings.size === 0}
+                className={`text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-all font-bold shadow-sm active:scale-98 cursor-pointer ${
+                  selectedMeetings.size > 0
+                    ? "bg-red-50 text-red-600 border-red-200 hover:bg-red-100 hover:border-red-300"
+                    : "bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed opacity-50"
+                }`}
+                title="Delete Selected Instant Meetings"
+              >
+                <Trash2 className="size-3.5 text-red-500" />
+                <span>Delete {selectedMeetings.size > 0 && `(${selectedMeetings.size})`}</span>
+              </button>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="text-xs text-slate-500 hover:text-[#1e2b72] flex items-center gap-1.5 cursor-pointer transition-all border border-slate-200 hover:border-[#1e2b72]/30 px-3 py-1.5 rounded-xl bg-white shadow-sm font-bold active:scale-98">
+                    <Filter className="size-3.5 text-indigo-500" />
+                    <span>Show: {ongoingFilter === "All" ? "All Ongoing" : ongoingFilter === "Instant" ? "Instant Only" : "Scheduled Only"}</span>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48 bg-white border border-slate-200 rounded-2xl shadow-xl p-2 z-50 animate-scale-in">
+                  <DropdownMenuItem
+                    onClick={() => setOngoingFilter("All")}
+                    className="flex items-center justify-between rounded-xl px-3 py-2 cursor-pointer hover:bg-indigo-50/50 text-xs font-semibold text-slate-700 hover:text-[#1e2b72] outline-none"
+                  >
+                    <span>All Ongoing</span>
+                    {ongoingFilter === "All" && <Check className="size-3.5 text-[#1e2b72]" />}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => setOngoingFilter("Instant")}
+                    className="flex items-center justify-between rounded-xl px-3 py-2 cursor-pointer hover:bg-indigo-50/50 text-xs font-semibold text-slate-700 hover:text-[#1e2b72] outline-none"
+                  >
+                    <span>Instant Only</span>
+                    {ongoingFilter === "Instant" && <Check className="size-3.5 text-[#1e2b72]" />}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => setOngoingFilter("Scheduled")}
+                    className="flex items-center justify-between rounded-xl px-3 py-2 cursor-pointer hover:bg-indigo-50/50 text-xs font-semibold text-slate-700 hover:text-[#1e2b72] outline-none"
+                  >
+                    <span>Scheduled Only</span>
+                    {ongoingFilter === "Scheduled" && <Check className="size-3.5 text-[#1e2b72]" />}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           )}
 
           {activeTab !== "Ongoing" && (
@@ -334,13 +408,18 @@ export default function HuddlePage() {
           {activeTab === "Scheduled" ? (
             <ScheduledMeetings refreshTrigger={refreshTrigger} />
           ) : filteredSessions.length > 0 ? (
-            filteredSessions.map((s) => (
-              <SessionCard
-                key={s.id}
-                session={s}
-                onRefresh={() => setRefreshTrigger((prev) => prev + 1)}
-              />
-            ))
+            filteredSessions.map((s) => {
+              const isInstant = s.title === "Instant Huddle" || s.title === "Instant Meeting";
+              return (
+                <SessionCard
+                  key={s.id}
+                  session={s}
+                  onRefresh={() => setRefreshTrigger((prev) => prev + 1)}
+                  isSelected={selectedMeetings.has(s.id)}
+                  onToggleSelect={isInstant ? () => handleToggleSelect(s.id) : undefined}
+                />
+              );
+            })
           ) : (
             <p className="text-gray-400 text-sm italic">No sessions found.</p>
           )}
