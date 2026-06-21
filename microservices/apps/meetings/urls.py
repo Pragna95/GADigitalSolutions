@@ -6,7 +6,7 @@ from . import MeetingViews as meeting_views  # Changed alias to avoid conflict
 urlpatterns = [
     # --- Authentication (from views.py) ---
     path('login/', views.CustomLoginView.as_view(), name='login'),
-    path('logout/', auth_views.LogoutView.as_view(next_page='/login/'), name='logout'),
+    path('logout/', auth_views.LogoutView.as_view(next_page='/api/login/'), name='logout'),
     path('signup/', views.SignupView.as_view(), name='signup'),
     
     # --- Admin Dashboard (from views.py) ---
@@ -16,7 +16,7 @@ urlpatterns = [
     path('meeting/schedule/', meeting_views.ScheduleMeetingView.as_view(), name='api_schedule_meeting'),
     path('meetings/', meeting_views.ListMeetingsView.as_view(), name='api_list_meetings'),
     path('meeting/validate/<str:company>/<str:api_key>/<uuid:meeting_id>/', meeting_views.ValidateMeetingView.as_view(), name='api_validate_meeting'),
-    path('meeting/validate-lobby/<uuid:meeting_id>/', meeting_views.ValidateMeetingView.as_view(), name='api_validate_lobby'),
+    path('meeting/validate-lobby/<str:meeting_id>/', meeting_views.ValidateMeetingView.as_view(), name='api_validate_lobby'),
     path('meeting/invite/', meeting_views.InviteParticipantView.as_view(), name='api_invite_participant'),
     
     # --- LiveKit Integration (from MeetingViews.py) ---

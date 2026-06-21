@@ -83,36 +83,48 @@ export default function AdvanceSchedule({
 
     const handleAddAttendee = () => {
         setAttendeeError("");
-        if (!newEmail.trim()) return;
+        const rawInput = newEmail.trim();
+        if (!rawInput) return;
+
+        const emails = rawInput
+            .split(",")
+            .map((e) => e.trim())
+            .filter(Boolean);
+
+        if (emails.length === 0) return;
 
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(newEmail.trim())) {
-            setAttendeeError("Please enter a valid email address");
+        const invalidEmails = emails.filter((e) => !emailRegex.test(e));
+        if (invalidEmails.length > 0) {
+            setAttendeeError(`Invalid email(s): ${invalidEmails.join(", ")}`);
             return;
         }
 
-        if (
-            attendeesList.some(
-                (a) => a.email.toLowerCase() === newEmail.trim().toLowerCase(),
-            )
-        ) {
-            setAttendeeError("This person is already invited");
-            return;
-        }
-
-        const matchedUser = availableUsers.find(
-            (u) => u.email.toLowerCase() === newEmail.trim().toLowerCase(),
+        const newEmailsToAdd = emails.filter(
+            (emailStr) =>
+                !attendeesList.some(
+                    (a) => a.email.toLowerCase() === emailStr.toLowerCase(),
+                )
         );
-        const namePart = matchedUser
-            ? matchedUser.name || matchedUser.username
-            : newEmail.split("@")[0];
-        const capitalizedName =
-            namePart.charAt(0).toUpperCase() + namePart.slice(1);
 
-        setAttendeesList((prev) => [
-            ...prev,
-            { name: capitalizedName, email: newEmail.trim() },
-        ]);
+        if (newEmailsToAdd.length === 0) {
+            setAttendeeError("All entered email(s) are already added/invited");
+            return;
+        }
+
+        const addedAttendees = newEmailsToAdd.map((emailStr) => {
+            const matchedUser = availableUsers.find(
+                (u) => u.email.toLowerCase() === emailStr.toLowerCase(),
+            );
+            const namePart = matchedUser
+                ? matchedUser.name || matchedUser.username
+                : emailStr.split("@")[0];
+            const capitalizedName =
+                namePart.charAt(0).toUpperCase() + namePart.slice(1);
+            return { name: capitalizedName, email: emailStr };
+        });
+
+        setAttendeesList((prev) => [...prev, ...addedAttendees]);
         setNewEmail("");
     };
 
@@ -1041,7 +1053,7 @@ h-[795.19px]
                                             value={newEmail}
                                             onChange={(e) => setNewEmail(e.target.value)}
                                             list="available-users-list"
-                                            placeholder="Enter email to invite..."
+                                            placeholder="Invite emails (separated by commas)..."
                                             className="w-full h-12 rounded-xl bg-[#eef2f7] border border-gray-200 text-base px-4 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all duration-200 text-[#0f172a]"
                                         />
                                         <datalist id="available-users-list">

@@ -39,7 +39,15 @@ export default function ScheduledMeetings({ refreshTrigger }) {
       const sortedMeetings = [...response.data].sort((a, b) => {
         return new Date(a.datetime) - new Date(b.datetime);
       });
-      setMeetings(sortedMeetings);
+      // Filter out instant meetings, ongoing meetings, and completed meetings
+      const filteredMeetings = sortedMeetings.filter(
+        (m) =>
+          m.title !== "Instant Huddle" &&
+          m.db_status === "scheduled" &&
+          !m.is_ongoing &&
+          !m.is_completed
+      );
+      setMeetings(filteredMeetings);
     } catch (err) {
       console.error(err);
       setError("Failed to load scheduled meetings.");
@@ -83,7 +91,7 @@ export default function ScheduledMeetings({ refreshTrigger }) {
   const handleOpenMeeting = (meeting) => {
     if (!meeting) return;
 
-    const path = `/${meeting.meeting_code}/${meeting.id}`;
+    const path = meeting.link || `/${meeting.meeting_code}/${meeting.id}`;
 
     const token = localStorage.getItem("token");
 
@@ -92,6 +100,36 @@ export default function ScheduledMeetings({ refreshTrigger }) {
     } else {
       sessionStorage.setItem("pending_meeting", path);
       navigate("/login");
+    }
+  };
+
+  const handleDeleteMeeting = async (meetingId) => {
+    if (!window.confirm("Are you sure you want to delete this scheduled meeting?")) {
+      return;
+    }
+    try {
+      const headers = {};
+      if (token && token !== "null" && token !== "undefined") {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      if (apiKey && apiKey !== "null" && apiKey !== "undefined") {
+        headers["x-api-key"] = apiKey;
+      }
+      const response = await microserviceApi.delete("/api/meetings/", {
+        headers,
+        params: { meeting_id: meetingId },
+        data: { meeting_id: meetingId }
+      });
+      if (response.status === 200) {
+        toast.success("Meeting deleted successfully");
+        setIsDialogOpen(false);
+        fetchMeetings();
+      } else {
+        toast.error("Failed to delete meeting");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error(err.response?.data?.error || "Error deleting meeting");
     }
   };
 
@@ -175,6 +213,72 @@ export default function ScheduledMeetings({ refreshTrigger }) {
                   ) : (
                     <span className="text-slate-400 italic text-xs">No participants invited.</span>
                   )}
+
+                  {/* Add/Invite Participant directly from scheduled meetings list */}
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Invite emails (separated by commas)..."
+                      id="add-invite-email"
+                      className="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 bg-white text-slate-700 font-sans"
+                    />
+                    <Button
+                      size="sm"
+                      onClick={async () => {
+                        const emailInput = document.getElementById("add-invite-email");
+                        const rawInput = emailInput?.value?.trim();
+                        if (!rawInput) return;
+                        
+                        const emails = rawInput
+                          .split(",")
+                          .map((e) => e.trim())
+                          .filter(Boolean);
+                          
+                        if (emails.length === 0) return;
+
+                        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                        const invalidEmails = emails.filter((e) => !emailRegex.test(e));
+                        if (invalidEmails.length > 0) {
+                          toast.error(`Invalid email format: ${invalidEmails.join(", ")}`);
+                          return;
+                        }
+
+                        try {
+                          const invitePromises = emails.map(async (singleEmail) => {
+                            return microserviceApi.post(
+                              "/api/meeting/invite/",
+                              {
+                                meeting_id: selectedMeeting.id,
+                                email: singleEmail,
+                              },
+                              {
+                                headers: {
+                                  "X-Api-Key": apiKey,
+                                },
+                              }
+                            );
+                          });
+
+                          await Promise.all(invitePromises);
+                          
+                          toast.success(`Successfully invited ${emails.length} participant(s)`);
+                          if (emailInput) emailInput.value = "";
+                          
+                          setSelectedMeeting((prev) => ({
+                            ...prev,
+                            participants: [...(prev.participants || []), ...emails],
+                          }));
+                          fetchMeetings();
+                        } catch (err) {
+                          console.error(err);
+                          toast.error("Error sending invitations");
+                        }
+                      }}
+                      className="bg-[#1e2b72] hover:bg-[#152060] text-white text-xs h-8 rounded-lg shrink-0 px-3 cursor-pointer"
+                    >
+                      Add
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Meeting Link */}
@@ -185,7 +289,7 @@ export default function ScheduledMeetings({ refreshTrigger }) {
                       type="text"
                       readOnly
                       value={buildFullLink(selectedMeeting.link)}
-                      className="flex-1 min-w-0 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-600 select-all outline-none"
+                      className="flex-1 min-w-0 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-600 select-all outline-none focus:outline-none focus:ring-0 focus-visible:ring-0"
                     />
                     <Button
                       size="sm"
@@ -200,21 +304,30 @@ export default function ScheduledMeetings({ refreshTrigger }) {
               </div>
 
               {/* Footer */}
-              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <div className="flex justify-between items-center pt-2 border-t border-slate-100">
                 <Button
-                  onClick={() => { handleOpenMeeting(selectedMeeting); setIsDialogOpen(false); }}
-                  className="px-4 h-10 rounded-lg bg-[#1e2b72] hover:bg-[#152060] text-white"
+                  onClick={() => handleDeleteMeeting(selectedMeeting.id)}
+                  className="px-4 h-10 rounded-lg bg-red-600 hover:bg-red-700 text-white cursor-pointer"
                 >
-                  Join / Open
+                  Delete Meeting
                 </Button>
 
-                <Button
-                  variant="outline"
-                  onClick={() => setIsDialogOpen(false)}
-                  className="px-4 h-10 rounded-lg cursor-pointer border-slate-200 hover:bg-slate-50"
-                >
-                  Close
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => { handleOpenMeeting(selectedMeeting); setIsDialogOpen(false); }}
+                    className="px-4 h-10 rounded-lg bg-[#1e2b72] hover:bg-[#152060] text-white"
+                  >
+                    Join / Open
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsDialogOpen(false)}
+                    className="px-4 h-10 rounded-lg cursor-pointer border-slate-200 hover:bg-slate-50"
+                  >
+                    Close
+                  </Button>
+                </div>
               </div>
             </div>
           )}

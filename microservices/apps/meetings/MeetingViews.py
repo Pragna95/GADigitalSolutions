@@ -81,13 +81,16 @@ class ValidateMeetingView(APIView):
         company_name = meeting.product.name if meeting.product else "Unknown"
 
         return Response({
-    "id": str(meeting.id),
-    "title": meeting.title,
-    "description": meeting.description,
-    "datetime": meeting.scheduled_start,
-    "created_by": str(meeting.created_by_user_id),
-    "created_by_email": meeting.created_by_user.email,
-})
+            "id": str(meeting.id),
+            "title": meeting.title,
+            "description": meeting.description,
+            "datetime": meeting.scheduled_start,
+            "created_by": str(meeting.created_by_user_id),
+            "created_by_email": meeting.created_by_user.email,
+            "company": meeting.product.slug if meeting.product else "huddle",
+            "meeting_code": meeting.meeting_code,
+            "api_key": api_key or getattr(settings, "X_API_KEY", None) or "kTh35Mm1gA8lX4StIrpfYIvtmStj2XCUVMm3nIdrnU8",
+        })
 
 from uuid import UUID
 
@@ -296,12 +299,26 @@ class ListMeetingsView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        meetings = Meeting.objects.filter(status='scheduled').order_by('scheduled_start')
+        meetings = Meeting.objects.all().order_by('scheduled_start')
         data = []
         signer = Signer()
         raw_api_key = request.headers.get("X-Api-Key")
-        encrypted_api_key = None
         for meeting in meetings:
+            # Check ongoing state: active session exists with > 0 participants
+            active_session = meeting.sessions.filter(status='active').first()
+            is_ongoing = False
+            active_participants_count = 0
+            if active_session:
+                active_participants_count = active_session.participant_sessions.filter(left_at__isnull=True).count()
+                if active_participants_count > 0:
+                    is_ongoing = True
+
+            # Check completed state: ended session exists and not currently ongoing
+            has_ended_session = meeting.sessions.filter(status='ended').exists()
+            is_completed = False
+            if not is_ongoing and has_ended_session:
+                is_completed = True
+
             participants = []
             for participant in getattr(meeting, 'participants', []).all() if hasattr(meeting, 'participants') else []:
                 if participant.user:
@@ -309,14 +326,39 @@ class ListMeetingsView(APIView):
 
             meeting_path = build_meeting_path(meeting, api_key=raw_api_key)
             data.append({
-        'id': str(meeting.id),
-        'title': meeting.title,
-        'datetime': meeting.scheduled_start.isoformat() if meeting.scheduled_start else None,
-        'participants': participants,
-        'link': meeting_path,
-        'meeting_code': meeting.meeting_code,})
+                'id': str(meeting.id),
+                'title': meeting.title,
+                'datetime': meeting.scheduled_start.isoformat() if meeting.scheduled_start else None,
+                'participants': participants,
+                'link': meeting_path,
+                'meeting_code': meeting.meeting_code,
+                'is_ongoing': is_ongoing,
+                'is_completed': is_completed,
+                'active_participants_count': active_participants_count,
+                'db_status': meeting.status,
+            })
 
         return Response(data, status=status.HTTP_200_OK)
+
+    def delete(self, request):
+        meeting_id = request.query_params.get("meeting_id") or request.data.get("meeting_id")
+        if not meeting_id:
+            return Response(
+                {"error": "meeting_id is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            meeting = Meeting.objects.get(id=meeting_id)
+            meeting.delete()
+            return Response(
+                {"message": "Meeting deleted successfully"},
+                status=status.HTTP_200_OK
+            )
+        except Meeting.DoesNotExist:
+            return Response(
+                {"error": "Meeting not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
 class ParticipantStateView(APIView):
 

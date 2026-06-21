@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -102,6 +102,32 @@ const Messaging = () => (
    App
 ----------------------------- */
 function App() {
+  useEffect(() => {
+    const handleCopy = (e) => {
+      const target = e.target;
+      const isInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
+      if (!isInput) {
+        e.preventDefault();
+      }
+    };
+    
+    const handleContextMenu = (e) => {
+      const target = e.target;
+      const isInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
+      if (!isInput) {
+        e.preventDefault();
+      }
+    };
+
+    document.addEventListener("copy", handleCopy);
+    document.addEventListener("contextmenu", handleContextMenu);
+
+    return () => {
+      document.removeEventListener("copy", handleCopy);
+      document.removeEventListener("contextmenu", handleContextMenu);
+    };
+  }, []);
+
   return (
     <>
       <Toaster position="top-right" />
@@ -170,6 +196,21 @@ function App() {
           <Route
             path="/lobby/:meeting_id"
             element={<MeetingLobby />}
+          />
+
+          <Route
+            path="/meeting/:company/:letter/:api_key/room/:meeting_id"
+            element={<Meeting />}
+          />
+
+          <Route
+            path="/meeting/:company/:api_key/room/:meeting_id"
+            element={<Meeting />}
+          />
+
+          <Route
+            path="/:company/:letter/:api_key/room/:meeting_id"
+            element={<Meeting />}
           />
 
           <Route

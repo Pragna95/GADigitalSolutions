@@ -113,14 +113,17 @@ export default function MeetingLobby() {
         sessionStorage.getItem("microservice_authenticated") === "true";
 
     useEffect(() => {
-        // ALWAYS enforce microservice authentication for deep links
-        if (api_key && !isMicroserviceAuth) {
+        const token = localStorage.getItem("token");
+        const isLoggedIn = !!token && token !== "null" && token !== "undefined";
+
+        // ALWAYS enforce microservice authentication for deep links (unless already logged in)
+        if (api_key && !isMicroserviceAuth && !isLoggedIn) {
             const microserviceUrl =
                 import.meta.env.VITE_MICROSERVICE_URL ||
                 "http://localhost:8000";
             const frontendUrl = window.location.origin;
             const targetUrl = `${frontendUrl}/auth-return?redirect=/${company}/${letter || 'a'}/${api_key}/${meeting_id}`;
-            window.location.href = `${microserviceUrl}/login/?next=${encodeURIComponent(targetUrl)}`;
+            window.location.href = `${microserviceUrl}/api/login/?next=${encodeURIComponent(targetUrl)}`;
             return;
         }
 
@@ -187,8 +190,12 @@ export default function MeetingLobby() {
             ? "host"
             : (isLoggedIn ? "user" : "guest");
 
+        const comp = company || meetingDetails?.company || "huddle";
+        const lettr = letter || "a";
+        const key = api_key || meetingDetails?.api_key || "kTh35Mm1gA8lX4StIrpfYIvtmStj2XCUVMm3nIdrnU8";
+
         navigate(
-            `/room/${actualMeetingId}?name=${encodeURIComponent(finalName)}&role=${role}`
+            `/${comp}/${lettr}/${key}/room/${actualMeetingId}?name=${encodeURIComponent(finalName)}&role=${role}`
         );
     };
 

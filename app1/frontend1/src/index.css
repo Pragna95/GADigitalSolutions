@@ -16,6 +16,23 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Copy Resistance System */
+* {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+input, textarea, select, [contenteditable="true"], .selectable, [select-all] {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+/* Soft Premium Selection (Removes ugly bright blue browser default) */
+::selection {
+  background-color: #e0e7ff !important;
+  color: #1e2b72 !important;
+}
+
 /* Custom modern scrollbars */
 ::-webkit-scrollbar {
   width: 6px;

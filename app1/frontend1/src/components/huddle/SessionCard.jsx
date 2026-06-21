@@ -88,7 +88,13 @@ export default function SessionCard({ session }) {
       <div className="mt-1">
         {session.status === "Ongoing" && (
           <button
-            onClick={() => navigate("/meeting")}
+            onClick={() => {
+              if (session.isDatabase && session.link) {
+                navigate(session.link);
+              } else {
+                navigate("/meeting");
+              }
+            }}
             className="bg-gradient-to-r from-[#002266] to-[#0c3aa3] hover:from-[#001744] hover:to-[#0a318a] hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 text-white w-full py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer"
           >
             Join Room

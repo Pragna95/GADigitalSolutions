@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/dialog";
 import { useLocation } from "react-router-dom";
 import { useEffect } from "react";
+import toast from "react-hot-toast";
+import { microserviceApi } from "@/services/api";
 
 const TABS = ["Ongoing", "Scheduled", "Completed"];
 
@@ -67,58 +69,55 @@ export default function HuddlePage() {
     link: ""
   });
 
-  // const handleJoinSession = () => {
-  //   if (!meetingId.trim()) {
-  //     alert("Please enter a valid Meeting ID.");
-  //     return;
-  //   }
-  //   console.log("Joining meeting:", meetingId);
-  // };
+  const parseMeetingIdentifier = (input) => {
+    let path = input.trim();
+    if (path.includes("http://") || path.includes("https://")) {
+      try {
+        const url = new URL(path);
+        path = url.pathname;
+      } catch (e) {
+        // Fallback
+      }
+    }
+    const parts = path.replace(/^\/|\/$/g, "").split("/");
+    if (parts.length > 0) {
+      return parts[parts.length - 1];
+    }
+    return null;
+  };
+
   const handleJoinSession = async () => {
     const input = meetingId.trim();
 
     if (!input) {
-      toast.error("Please enter a meeting link");
+      toast.error("Please enter a meeting link or code");
       return;
     }
 
-    let meetingCode = null;
-    let meetingIdExtracted = null;
+    const identifier = parseMeetingIdentifier(input);
+
+    if (!identifier) {
+      toast.error("Invalid meeting link or code");
+      return;
+    }
 
     try {
-      // Case 1: Full URL
-      if (input.includes("http")) {
-        const url = new URL(input);
-        const parts = url.pathname.split("/").filter(Boolean);
-
-        meetingCode = parts[0];
-        meetingIdExtracted = parts[1];
-      }
-      // Case 2: direct format "code/id"
-      else {
-        const parts = input.split("/");
-        meetingCode = parts[0];
-        meetingIdExtracted = parts[1];
-      }
-
-      if (!meetingCode || !meetingIdExtracted) {
-        toast.error("Invalid meeting link format");
-        return;
-      }
-
       // Validate with backend
-      const res = await api.get(
-        `/api/meeting/validate/${meetingCode}/${meetingIdExtracted}`
+      const res = await microserviceApi.get(
+        `/api/meeting/validate-lobby/${identifier}/`
       );
 
-      if (res.data?.valid) {
-        navigate(`/${meetingCode}/${meetingIdExtracted}`);
+      if (res.status === 200 && res.data?.id) {
+        const company = res.data.company || "huddle";
+        const apiKey = res.data.api_key || "kTh35Mm1gA8lX4StIrpfYIvtmStj2XCUVMm3nIdrnU8";
+        // Exact format: company/letter/api_key/meeting_id
+        navigate(`/${company}/a/${apiKey}/${res.data.id}`);
       } else {
         toast.error("Meeting not found or expired");
       }
     } catch (err) {
       console.error(err);
-      toast.error("Invalid meeting link");
+      toast.error("Meeting not found or invalid link");
     }
   };
   const handleAddSession = (meetingDetails) => {
@@ -159,8 +158,62 @@ export default function HuddlePage() {
   };
 
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [dbMeetings, setDbMeetings] = useState([]);
 
-  const filteredSessions = sessionsList.filter((s) => s.status === activeTab);
+  useEffect(() => {
+    const fetchDbMeetings = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const apiKey = import.meta.env.VITE_X_API_KEY || localStorage.getItem("api_key") || "";
+        const headers = {};
+        if (token && token !== "null" && token !== "undefined") {
+          headers["Authorization"] = `Bearer ${token}`;
+        }
+        if (apiKey && apiKey !== "null" && apiKey !== "undefined") {
+          headers["x-api-key"] = apiKey;
+        }
+        const res = await microserviceApi.get("/api/meetings/", { headers });
+        if (res.data) {
+          setDbMeetings(res.data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch meetings in HuddlePage", err);
+      }
+    };
+    fetchDbMeetings();
+  }, [refreshTrigger]);
+
+  const ongoingDbSessions = dbMeetings
+    .filter(m => m.is_ongoing)
+    .map(m => ({
+      id: m.id,
+      project: "PROJECT STARLIGHT",
+      title: m.title,
+      description: m.description || "Active huddle session.",
+      time: "Live Now",
+      participants: m.active_participants_count || m.participants?.length || 0,
+      status: "Ongoing",
+      link: m.link,
+      isDatabase: true
+    }));
+
+  const completedDbSessions = dbMeetings
+    .filter(m => m.is_completed)
+    .map(m => ({
+      id: m.id,
+      project: "PROJECT STARLIGHT",
+      title: m.title,
+      description: m.description || "Completed huddle session.",
+      time: m.datetime ? new Date(m.datetime).toLocaleDateString() : "Ended",
+      participants: m.participants?.length || 0,
+      status: "Completed",
+      link: m.link,
+      isDatabase: true
+    }));
+
+  const placeholders = sessionsList.filter((s) => s.status === activeTab);
+  const dbItems = activeTab === "Ongoing" ? ongoingDbSessions : (activeTab === "Completed" ? completedDbSessions : []);
+  const filteredSessions = [...dbItems, ...placeholders];
 
   const location = useLocation();
 

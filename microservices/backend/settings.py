@@ -189,6 +189,10 @@ LOGIN_REDIRECT_URL = '/api/super-admin/dashboard/'
 # URL where users are redirected for login
 LOGIN_URL = '/api/login/'
 
+AUTHENTICATION_BACKENDS = [
+    'apps.meetings.auth_backends.EmailOrUsernameModelBackend',
+]
+
 CACHES = {
     "default": {
         "BACKEND": "backend.cache.FallbackRedisCache",

@@ -1,10 +1,22 @@
 import React from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Home } from "lucide-react";
+import { Home, Video } from "lucide-react";
 
 export default function ThankYou() {
     const navigate = useNavigate();
+    const location = useLocation();
+
+    const { company, letter, api_key, meetingId, role, name } = location.state || {};
+
+    const handleGoHome = () => {
+        const token = localStorage.getItem("token");
+        if (token) {
+            navigate("/dashboard");
+        } else {
+            navigate("/");
+        }
+    };
 
     return (
         <div className="min-h-screen bg-[#F8F9FB] flex flex-col items-center justify-center p-6 font-sans">
@@ -27,13 +39,30 @@ export default function ThankYou() {
                         </p>
                     </div>
 
-                    <Button
-                        onClick={() => navigate("/")}
-                        className="w-full bg-[#1e2b72] hover:bg-[#152060] text-white py-6 rounded-xl font-bold transition-all duration-200 text-lg flex items-center justify-center gap-2"
-                    >
-                        <Home size={20} />
-                        Return to Home
-                    </Button>
+                    <div className="flex gap-3 w-full">
+                        {meetingId && (
+                            <Button
+                                onClick={() => {
+                                    if (company && letter && api_key) {
+                                        navigate(`/${company}/${letter}/${api_key}/room/${meetingId}?name=${encodeURIComponent(name || "Guest")}&role=${role || "guest"}`);
+                                    } else {
+                                        navigate(`/room/${meetingId}?name=${encodeURIComponent(name || "Guest")}&role=${role || "guest"}`);
+                                    }
+                                }}
+                                className="flex-1 bg-white hover:bg-slate-50 text-[#1e2b72] border border-[#1e2b72]/20 py-6 h-12 rounded-xl font-bold transition-all duration-200 text-base flex items-center justify-center gap-2 cursor-pointer"
+                            >
+                                <Video size={18} />
+                                Join Again
+                            </Button>
+                        )}
+                        <Button
+                            onClick={handleGoHome}
+                            className="flex-1 bg-[#1e2b72] hover:bg-[#152060] text-white py-6 h-12 rounded-xl font-bold transition-all duration-200 text-base flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                        >
+                            <Home size={18} />
+                            Return to Home
+                        </Button>
+                    </div>
                 </div>
             </div>
         </div>

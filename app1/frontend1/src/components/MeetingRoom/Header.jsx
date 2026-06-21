@@ -1,6 +1,6 @@
 import React from "react";
 import { Monitor, Circle, PhoneOff } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 const Header = ({
     isRecording,
@@ -12,6 +12,7 @@ const Header = ({
     formatTime,
 }) => {
     const navigate = useNavigate();
+    const { company, letter, api_key, meeting_id } = useParams();
 
     return (
         <header className="h-[78px] bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0">
@@ -80,7 +81,19 @@ const Header = ({
 
             {/* RIGHT */}
             <button
-                onClick={() => navigate("/thank-you")}
+                onClick={() => {
+                    const searchParams = new URLSearchParams(window.location.search);
+                    navigate("/thank-you", {
+                        state: {
+                            company,
+                            letter,
+                            api_key,
+                            meetingId: meeting_id,
+                            role: searchParams.get("role"),
+                            name: searchParams.get("name")
+                        }
+                    });
+                }}
                 className="bg-[#D14343] hover:bg-[#b93232] hover:shadow-[0_4px_12px_rgba(209,67,67,0.3)] hover:-translate-y-0.5 active:translate-y-0 text-white px-4 h-[40px] rounded-lg flex items-center gap-2 text-[15px] font-bold shadow-sm transition-all duration-300 cursor-pointer"
             >
                 Leave Huddle

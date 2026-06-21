@@ -17,41 +17,49 @@ export default function AddParticipantModal({ open, setOpen, meetingId }) {
 
     const handleInvite = async (e) => {
         e.preventDefault();
-        if (!email.trim()) return;
+        const rawInput = email.trim();
+        if (!rawInput) return;
+
+        const emails = rawInput
+            .split(",")
+            .map((e) => e.trim())
+            .filter(Boolean);
+
+        if (emails.length === 0) return;
 
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email.trim())) {
-            toast.error("Please enter a valid email address.");
+        const invalidEmails = emails.filter((e) => !emailRegex.test(e));
+        if (invalidEmails.length > 0) {
+            toast.error(`Invalid email format: ${invalidEmails.join(", ")}`);
             return;
         }
 
         setLoading(true);
         try {
             const apiKey = import.meta.env.VITE_X_API_KEY || localStorage.getItem("api_key") || "";
-            const response = await microserviceApi.post(
-                "/api/meeting/invite/",
-                {
-                    meeting_id: meetingId,
-                    email: email.trim(),
-                },
-                {
-                    headers: {
-                        "X-Api-Key": apiKey,
+            const invitePromises = emails.map(async (singleEmail) => {
+                return microserviceApi.post(
+                    "/api/meeting/invite/",
+                    {
+                        meeting_id: meetingId,
+                        email: singleEmail,
                     },
-                }
-            );
+                    {
+                        headers: {
+                            "X-Api-Key": apiKey,
+                        },
+                    }
+                );
+            });
 
-            if (response.status === 200) {
-                toast.success(`Invitation sent to ${email.trim()} successfully!`);
-                setEmail("");
-                setOpen(false);
-            } else {
-                toast.error(response.data?.error || "Failed to send invitation.");
-            }
+            await Promise.all(invitePromises);
+            toast.success(`Successfully invited ${emails.length} participant(s)!`);
+            setEmail("");
+            setOpen(false);
         } catch (error) {
             console.error("Invite error:", error);
             toast.error(
-                error.response?.data?.error || "Failed to send invitation due to server error."
+                error.response?.data?.error || "Failed to send invitation(s) due to server error."
             );
         } finally {
             setLoading(false);
@@ -75,8 +83,8 @@ export default function AddParticipantModal({ open, setOpen, meetingId }) {
                         </label>
                         <div className="relative">
                             <Input
-                                type="email"
-                                placeholder="name@example.com"
+                                type="text"
+                                placeholder="Invite emails (separated by commas)..."
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 disabled={loading}
