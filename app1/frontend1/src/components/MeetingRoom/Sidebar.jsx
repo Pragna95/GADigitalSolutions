@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef  } from "react";
 import { Search, X, SendHorizontal } from "lucide-react";
 
 const Sidebar = ({
@@ -8,6 +8,9 @@ const Sidebar = ({
     setShowParticipantsGrid,
     handRaiseMembers = [], participantMembers = [],
     liveParticipants = [], userId, participantName
+    meetingId,
+    userId,
+    participantName
 }) => {
     const [activeMenu, setActiveMenu] = useState("chat");
     const [message, setMessage] = useState("");
@@ -34,11 +37,57 @@ const Sidebar = ({
     }, [liveParticipants, participantMembers, participantName, userId]);
 
     const visibleParticipants = showAll ? displayParticipants : displayParticipants.slice(0, 8);
+    const chatSocketRef = useRef(null);
+    useEffect(() => {
+    if (!meetingId) return;
 
+    const socket = new WebSocket(
+        `ws://127.0.0.1:8000/ws/chat/${meetingId}/`
+    );
+
+    chatSocketRef.current = socket;
+
+    socket.onopen = () => {
+        console.log("Chat Connected");
+    };
+
+    socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        setChatMessages((prev) => [
+            ...prev,
+            {
+                sender: data.sender || "Unknown",
+                text: data.message
+            }
+        ]);
+    };
+
+    socket.onclose = () => {
+        console.log("Chat Closed");
+    };
+
+    return () => {
+        socket.close();
+    };
+    }, [meetingId]);
     const handleSendMessage = () => {
-        if (message.trim() === "") return;
-        setChatMessages([...chatMessages, { sender: "You", text: message }]);
-        setMessage("");
+    if (message.trim() === "") return;
+
+    if (
+        chatSocketRef.current &&
+        chatSocketRef.current.readyState === WebSocket.OPEN
+    ) {
+        chatSocketRef.current.send(
+            JSON.stringify({
+                user_id: userId,
+                sender: participantName,
+                message: message
+            })
+        );
+    }
+
+    setMessage("");
     };
 
     if (!showHandRaise && !showParticipants && !showMenuPage) return null;
