@@ -45,8 +45,8 @@ const Footer = ({
     return (
         <footer className="h-[95px] bg-[#f8fafc] border-t border-slate-100 flex items-center justify-between px-6 shrink-0 shadow-[0_-4px_20px_rgba(0,0,0,0.015)]">
             {/* LEFT */}
-            <div className="flex items-center gap-3">
-                <span className="text-[11px] uppercase tracking-wide font-bold text-slate-400">
+            <div className="flex-1 flex items-center gap-3 justify-start min-w-0">
+                <span className="text-[11px] uppercase tracking-wide font-bold text-slate-400 shrink-0">
                     Meet ID
                 </span>
 
@@ -57,15 +57,15 @@ const Footer = ({
                             toast.success("Meeting ID copied to clipboard!");
                         }
                     }}
-                    className="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-xl flex items-center gap-2 text-sm font-semibold shadow-sm transition-all duration-200 cursor-pointer active:scale-95 hover:shadow-md"
+                    className="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-xl flex items-center gap-2 text-sm font-semibold shadow-sm transition-all duration-200 cursor-pointer active:scale-95 hover:shadow-md min-w-0 max-w-[240px]"
                 >
-                    {meetingId || "Unknown"}
-                    <Copy size={14} />
+                    <span className="truncate">{meetingId || "Unknown"}</span>
+                    <Copy size={14} className="shrink-0" />
                 </div>
             </div>
 
             {/* CENTER */}
-            <div className="bg-white px-5 py-3 rounded-[24px] shadow-[0_8px_30px_rgba(0,0,0,0.05)] flex items-center gap-3 border border-slate-100 animate-slide-up">
+            <div className="bg-white px-5 py-3 rounded-[24px] shadow-[0_8px_30px_rgba(0,0,0,0.05)] flex items-center gap-3 border border-slate-100 animate-slide-up shrink-0">
                 {/* MIC */}
                 <div className="flex items-center bg-slate-50 hover:bg-slate-100/60 rounded-xl px-1 transition-colors duration-200">
                     <button
@@ -206,7 +206,7 @@ const Footer = ({
             </div>
 
             {/* RIGHT */}
-            <div className="flex items-center gap-3">
+            <div className="flex-1 flex items-center gap-3 justify-end min-w-0">
                 <button className="w-11 h-11 rounded-xl border border-slate-250 bg-white flex items-center justify-center text-slate-600 hover:bg-slate-50 hover:border-blue-450 hover:scale-105 active:scale-95 transition-all duration-200 shadow-sm cursor-pointer hover:shadow-md">
                     <FilePenLine size={18} />
                 </button>

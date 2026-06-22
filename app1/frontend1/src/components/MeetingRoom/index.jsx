@@ -1,8 +1,17 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import axios from "axios";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import api from "../../services/api.js";
+import { microserviceApi } from "../../services/api.js";
 import { toast } from "react-hot-toast";
+import { Room, RoomEvent, Track } from "livekit-client";
+
+const wsBaseUrl = import.meta.env.VITE_WS_URL || 
+    (import.meta.env.VITE_MICROSERVICE_URL ? 
+        import.meta.env.VITE_MICROSERVICE_URL.replace(/^http/, "ws") : 
+        "ws://localhost:8000");
+
+const apiBaseUrl = import.meta.env.VITE_MICROSERVICE_URL || "http://localhost:8000";
+const API_URL = `${apiBaseUrl}/api/meetings`;
 
 // Subcomponents
 import Header from "./Header.jsx";
@@ -82,410 +91,340 @@ const MeetingRoom = () => {
 
     const localVideoRef = useRef(null);
     const localStreamRef = useRef(null);
-    const wsRef = useRef(null);
-    const pcRefs = useRef({});
-    const pendingIceCandidatesRef = useRef({});
+    const lkRoomRef = useRef(null);
 
     const [remoteStreams, setRemoteStreams] = useState([]);
     const [roomPeers, setRoomPeers] = useState({});
-    const [localPeerId] = useState(() => `peer-${Math.random().toString(36).slice(2, 10)}`);
+    const [remoteMicStates, setRemoteMicStates] = useState({});
+    const [liveParticipants, setLiveParticipants] = useState([]);
     const [isWebRtcReady, setIsWebRtcReady] = useState(false);
 
-    const peerConfig = useMemo(
-        () => ({
-            iceServers: [
-                { urls: ["stun:stun.l.google.com:19302"] },
-            ],
-        }),
-        [],
-    );
+    const remoteStreamsRef = useRef({}); // { participantIdentity: MediaStream }
 
-    const addRemoteStream = (peerId, stream) => {
-        setRemoteStreams((prev) => {
-            if (prev.some((item) => item.peerId === peerId)) {
+    const updateRemoteParticipantStream = (participant) => {
+        const identity = participant.identity;
+        
+        let stream = remoteStreamsRef.current[identity];
+        if (!stream) {
+            stream = new MediaStream();
+            remoteStreamsRef.current[identity] = stream;
+        }
+
+        const tracks = [];
+        participant.trackPublications.forEach(pub => {
+            if (pub.track && pub.track.mediaStreamTrack) {
+                tracks.push(pub.track.mediaStreamTrack);
+            }
+        });
+
+        const currentTracks = stream.getTracks();
+        currentTracks.forEach(t => {
+            if (!tracks.includes(t)) {
+                stream.removeTrack(t);
+            }
+        });
+        tracks.forEach(t => {
+            if (!currentTracks.includes(t)) {
+                stream.addTrack(t);
+            }
+        });
+
+        if (stream.getTracks().length === 0) {
+            delete remoteStreamsRef.current[identity];
+            setRemoteStreams(prev => prev.filter(item => item.peerId !== identity));
+            setRoomPeers(prev => {
+                const next = { ...prev };
+                delete next[identity];
+                return next;
+            });
+        } else {
+            setRemoteStreams(prev => {
+                const exists = prev.some(item => item.peerId === identity);
+                if (exists) {
+                    return prev.map(item => item.peerId === identity ? { peerId: identity, stream } : item);
+                }
+                return [...prev, { peerId: identity, stream }];
+            });
+            setRoomPeers(prev => {
+                if (!prev[identity]) {
+                    const cleanName = participant.name || `Guest ${identity.slice(-4)}`;
+                    return { ...prev, [identity]: { name: cleanName, user_id: identity } };
+                }
                 return prev;
-            }
-            return [...prev, { peerId, stream }];
-        });
-    };
-
-    const removePeer = (peerId) => {
-        const pc = pcRefs.current[peerId];
-        if (pc) {
-            pc.close();
-            delete pcRefs.current[peerId];
-        }
-        delete pendingIceCandidatesRef.current[peerId];
-        setRemoteStreams((prev) => prev.filter((item) => item.peerId !== peerId));
-        setRoomPeers((prev) => {
-            const next = { ...prev };
-            delete next[peerId];
-            return next;
-        });
-    };
-
-    const sendSignal = (payload) => {
-        const socket = wsRef.current;
-        if (!socket || socket.readyState !== WebSocket.OPEN) {
-            return;
-        }
-
-        socket.send(
-            JSON.stringify({
-                sender: localPeerId,
-                meeting_id: meetingId,
-                ...payload,
-            }),
-        );
-    };
-
-    const createPeerConnection = async (
-        remotePeerId,
-        sendOffer = false,
-        remoteSdp = null,
-        remoteSdpType = null,
-    ) => {
-        if (pcRefs.current[remotePeerId]) {
-            return pcRefs.current[remotePeerId];
-        }
-
-        const pc = new RTCPeerConnection(peerConfig);
-        pcRefs.current[remotePeerId] = pc;
-
-        pc.onicecandidate = (event) => {
-            if (event.candidate) {
-                sendSignal({
-                    type: "ice",
-                    target: remotePeerId,
-                    candidate: event.candidate,
-                });
-            }
-        };
-
-        pc.ontrack = (event) => {
-            if (event.streams && event.streams[0]) {
-                addRemoteStream(remotePeerId, event.streams[0]);
-            }
-        };
-
-        pc.onconnectionstatechange = () => {
-            if (
-                pc.connectionState === "failed" ||
-                pc.connectionState === "disconnected" ||
-                pc.connectionState === "closed"
-            ) {
-                removePeer(remotePeerId);
-            }
-        };
-
-        if (localStreamRef.current) {
-            localStreamRef.current.getTracks().forEach((track) => {
-                pc.addTrack(track, localStreamRef.current);
             });
         }
-
-        if (remoteSdp) {
-            await pc.setRemoteDescription({ type: remoteSdpType, sdp: remoteSdp });
-            if (remoteSdpType === "offer") {
-                const answer = await pc.createAnswer();
-                await pc.setLocalDescription(answer);
-                sendSignal({
-                    type: "answer",
-                    target: remotePeerId,
-                    sdp: answer.sdp,
-                    sdpType: answer.type,
-                });
-            }
-            const queuedCandidates = pendingIceCandidatesRef.current[remotePeerId];
-            if (queuedCandidates && queuedCandidates.length) {
-                for (const candidate of queuedCandidates) {
-                    try {
-                        await pc.addIceCandidate(candidate);
-                    } catch (err) {
-                        console.warn("Queued ICE candidate failed", err);
-                    }
-                }
-                delete pendingIceCandidatesRef.current[remotePeerId];
-            }
-        } else if (sendOffer) {
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            sendSignal({
-                type: "offer",
-                target: remotePeerId,
-                sdp: offer.sdp,
-                sdpType: offer.type,
-            });
-        }
-
-        return pc;
     };
 
-    const handleSignalMessage = async (message) => {
-        if (!message || message.sender === localPeerId) {
-            return;
+    const fetchParticipantState = async () => {
+        try {
+            const response = await axios.get(
+                `${API_URL}/participant/${meetingId}/${userId}/`
+            );
+            const data = response.data.data;
+            if (data) {
+                setIsMicOn(data.mic_on);
+                setIsVideoOn(data.video_on);
+                setIsHandRaised(false);
+                updateParticipantState(data.mic_on, data.video_on, false);
+                return data;
+            }
+        } catch (error) {
+            if (error.response && error.response.status === 404) {
+                console.log("New participant! Initializing local UI with default states.");
+                updateParticipantState(true, true, false);
+            } else {
+                console.error("Failed to fetch participant state:", error);
+            }
         }
-
-        const { type, sender, target } = message;
-        if (target && target !== localPeerId) {
-            return;
-        }
-
-        switch (type) {
-            case "join": {
-                setRoomPeers((prev) => ({
-                    ...prev,
-                    [sender]: {
-                        name: message.name || `Guest ${sender.slice(-4)}`,
-                    },
-                }));
-                if (localPeerId < sender) {
-                    await createPeerConnection(sender, true);
-                }
-                break;
-            }
-            case "offer": {
-                await createPeerConnection(sender, false, message.sdp, message.sdpType);
-                break;
-            }
-            case "answer": {
-                const pc = pcRefs.current[sender];
-                if (pc) {
-                    await pc.setRemoteDescription({ type: message.sdpType, sdp: message.sdp });
-                }
-                break;
-            }
-            case "ice": {
-                const pc = pcRefs.current[sender];
-                if (pc && message.candidate) {
-                    try {
-                        await pc.addIceCandidate(message.candidate);
-                    } catch (error) {
-                        console.warn("Failed to add ICE candidate", error);
-                    }
-                } else if (message.candidate) {
-                    pendingIceCandidatesRef.current[sender] = [
-                        ...(pendingIceCandidatesRef.current[sender] || []),
-                        message.candidate,
-                    ];
-                }
-                break;
-            }
-            case "leave": {
-                removePeer(sender);
-                break;
-            }
-            default:
-                break;
-        }
+        return { mic_on: true, video_on: true };
     };
 
+    // LiveKit SFU setup and event routing
     useEffect(() => {
-        const setupMedia = async () => {
+        let active = true;
+        const room = new Room({
+            adaptiveStream: true,
+            dynacast: true,
+        });
+        lkRoomRef.current = room;
+
+        const connectRoom = async () => {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true,
-                    },
-                    video: true,
-                });
-                console.log(
-                    "Audio Tracks:",
-                    stream.getAudioTracks()
-                );
-                localStreamRef.current = stream;
-                if (localVideoRef.current) {
-                    localVideoRef.current.srcObject = stream;
+                // Fetch the initial state first to avoid state closure mismatch
+                let initialMic = true;
+                let initialVideo = true;
+                try {
+                    const initialState = await fetchParticipantState();
+                    initialMic = initialState.mic_on;
+                    initialVideo = initialState.video_on;
+                } catch (e) {
+                    console.warn("Failed to fetch initial participant state:", e);
                 }
-                setIsWebRtcReady(true);
-            } catch (err) {
-                console.error("Error accessing media devices.", err);
-            }
-        };
 
-        setupMedia();
+                let token = "";
+                let url = "";
+                try {
+                    // 1. Fetch token from backend
+                    const tokenResponse = await microserviceApi.post(`/api/meetings/token/`, {
+                        meeting_id: meetingId,
+                        user_id: userId,
+                        name: participantName,
+                        role: "participant"
+                    });
+                    token = tokenResponse.data.token;
+                    url = tokenResponse.data.url;
+                } catch (e) {
+                    console.warn("Failed to fetch LiveKit token from backend:", e);
+                }
 
-        return () => {
-            if (localStreamRef.current) {
-                localStreamRef.current.getTracks().forEach((track) => track.stop());
-            }
-        };
-    }, []);
+                if (!active) return;
 
-    useEffect(() => {
-        if (!isWebRtcReady || !meetingId) {
-            if (!meetingId) {
-                console.warn("Meeting ID missing, skipping websocket setup.");
-            }
-            return;
-        }
+                if (url && token) {
+                    try {
+                        // 2. Connect to LiveKit SFU Server
+                        await room.connect(url, token);
+                        console.log("LiveKit Room Connected:", room.name);
 
-        const socket = new WebSocket(
-            `ws://127.0.0.1:8000/ws/audio/${meetingId}/`
-        );
-        wsRef.current = socket;
-
-        socket.onopen = () => {
-            console.log("WebSocket Connected");
-            sendSignal({ type: "join", name: participantName });
-        };
-
-        socket.onmessage = async (event) => {
-            try {
-                const payload = JSON.parse(event.data);
-                if (payload.event === "state_changed") {
-                    const { user_id, username, hand_raised } = payload;
-                    if (user_id && user_id !== userId) {
-                        setHandRaisedUsers((prev) => {
-                            const next = { ...prev };
-                            if (hand_raised) {
-                                const displayedName = username || `Guest ${user_id.slice(-4)}`;
-                                next[user_id] = displayedName;
-                                showHandRaiseGhost(user_id, displayedName);
-                            } else {
-                                delete next[user_id];
-                                setHandRaiseNotifications((prev) => prev.filter((n) => n.uid !== user_id));
-                                if (handRaiseTimers.current[user_id]) {
-                                    clearTimeout(handRaiseTimers.current[user_id]);
-                                    delete handRaiseTimers.current[user_id];
-                                }
+                        // 3. Register listeners
+                        const syncMicState = (publication, participant) => {
+                            if (publication.kind === "audio") {
+                                setRemoteMicStates(prev => ({
+                                    ...prev,
+                                    [participant.identity]: !publication.isMuted
+                                }));
                             }
-                            return next;
+                        };
+
+                        room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+                            updateRemoteParticipantStream(participant);
+                            syncMicState(publication, participant);
                         });
+                        room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
+                            updateRemoteParticipantStream(participant);
+                        });
+                        room.on(RoomEvent.TrackMuted, (publication, participant) => {
+                            syncMicState(publication, participant);
+                        });
+                        room.on(RoomEvent.TrackUnmuted, (publication, participant) => {
+                            syncMicState(publication, participant);
+                        });
+                        room.on(RoomEvent.ParticipantConnected, (participant) => {
+                            updateRemoteParticipantStream(participant);
+                        });
+                        room.on(RoomEvent.ParticipantDisconnected, (participant) => {
+                            delete remoteStreamsRef.current[participant.identity];
+                            setRemoteStreams(prev => prev.filter(item => item.peerId !== participant.identity));
+                            setRoomPeers(prev => {
+                                const next = { ...prev };
+                                delete next[participant.identity];
+                                return next;
+                            });
+                            setRemoteMicStates(prev => {
+                                const next = { ...prev };
+                                delete next[participant.identity];
+                                return next;
+                            });
+                        });
+
+                        // 4. Publish local audio/video tracks
+                        await room.localParticipant.setMicrophoneEnabled(initialMic);
+                        await room.localParticipant.setCameraEnabled(initialVideo);
+
+                        // Construct local MediaStream for UI video tag
+                        const localStream = new MediaStream();
+
+                        for (const pub of room.localParticipant.videoTrackPublications.values()) {
+                            if (pub.track?.mediaStreamTrack) {
+                                localStream.addTrack(pub.track.mediaStreamTrack);
+                            }
+                        }
+                        for (const pub of room.localParticipant.audioTrackPublications.values()) {
+                            if (pub.track?.mediaStreamTrack) {
+                                localStream.addTrack(pub.track.mediaStreamTrack);
+                            }
+                        }
+
+                        localStreamRef.current = localStream;
+                        if (localVideoRef.current) {
+                            localVideoRef.current.srcObject = localStream;
+                        }
+
+                        setIsWebRtcReady(true);
+                        return; // Successfully connected to LiveKit!
+                    } catch (lkErr) {
+                        console.error("LiveKit connection attempt failed:", lkErr);
                     }
-                } else {
-                    await handleSignalMessage(payload);
                 }
             } catch (err) {
-                console.error("Invalid websocket message", err);
+                console.error("Critical failure during connectRoom:", err);
+                toast.error("Failed to join meeting room.");
             }
         };
 
-        socket.onerror = (error) => {
-            console.log("WebSocket Error:", error);
-        };
-
-        socket.onclose = (event) => {
-            console.log("WebSocket Closed", event.code, event.reason);
-        };
-
-        const cleanup = () => {
-            if (socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({ sender: localPeerId, meeting_id: meetingId, type: "leave" }));
-                socket.close();
-            }
-            Object.values(pcRefs.current).forEach((pc) => pc.close());
-            wsRef.current = null;
-        };
-
-        const toggleMic = () => {
-        const newMicState = !isMicOn;
-        setIsMicOn(newMicState);
-        
-        // THE FIX: Actually disable the hardware audio track
-        if (localStreamRef.current) {
-            localStreamRef.current.getAudioTracks().forEach(track => {
-                track.enabled = newMicState;
-            });
-        }
-        
-        updateParticipantState(newMicState, isVideoOn, isHandRaised);
-    };
-
-    const toggleVideo = () => {
-        const newVideoState = !isVideoOn;
-        setIsVideoOn(newVideoState);
-        
-        // THE FIX: Actually disable the hardware video track
-        if (localStreamRef.current) {
-            localStreamRef.current.getVideoTracks().forEach(track => {
-                track.enabled = newVideoState;
-            });
-        }
-        
-        updateParticipantState(isMicOn, newVideoState, isHandRaised);
-    };
-
-        window.addEventListener("beforeunload", cleanup);
+        connectRoom();
 
         return () => {
-            cleanup();
-            window.removeEventListener("beforeunload", cleanup);
+            active = false;
+            room.disconnect();
+            if (lkRoomRef.current === room) {
+                lkRoomRef.current = null;
+            }
         };
-    }, [meetingId, localPeerId, participantName, isWebRtcReady]);
+    }, [meetingId, userId, participantName]);
 
     // ── Participant WebSocket: listens for countUpdate AND live participant grid ──
     useEffect(() => {
         if (!meetingId) return;
 
-        const wsUrl = `ws://127.0.0.1:8000/ws/participants/${meetingId}/`;
-        const pWs = new WebSocket(wsUrl);
-        participantWsRef.current = pWs;
+        let socket = null;
+        let reconnectTimeout = null;
+        let retryCount = 0;
+        const maxRetries = 10;
+        let isUnmounted = false;
+        let toastId = null;
 
-        pWs.onopen = () => {
-            console.log("[ParticipantWS] Connected:", wsUrl);
-            
-            // 1. Tell the backend this browser joined so it gets added to the grid!
-            pWs.send(JSON.stringify({
-                type: "participant_join",
-                name: participantName
-            }));
-        };
+        const connect = () => {
+            if (isUnmounted) return;
+            const wsUrl = `${wsBaseUrl}/ws/participants/${meetingId}/`;
+            socket = new WebSocket(wsUrl);
+            participantWsRef.current = socket;
 
-        pWs.onmessage = (event) => {
-            try {
-                const msg = JSON.parse(event.data);
-                
-                // Existing hand-raise logic
-                if (msg.event === "countUpdate" && typeof msg.count === "number") {
-                    setLiveHandRaiseCount(msg.count);
+            socket.onopen = () => {
+                if (isUnmounted) {
+                    socket.close();
+                    return;
                 }
+                console.log("[ParticipantWS] Connected:", wsUrl);
+                retryCount = 0;
+                if (toastId) {
+                    toast.success("Reconnected to meeting!", { id: toastId });
+                    toastId = null;
+                }
+                socket.send(JSON.stringify({
+                    type: "participant_join",
+                    name: participantName,
+                    user_id: userId
+                }));
+            };
 
-                // 2. NEW: Listen for the backend's live grid list and update the screen
-                if (msg.type === "participant_list") {
-                    console.log("Live Grid Update:", msg.participants);
+            socket.onmessage = (event) => {
+                if (isUnmounted) return;
+                try {
+                    const msg = JSON.parse(event.data);
                     
-                    setRoomPeers((prevPeers) => {
-                        const next = { ...prevPeers };
-                        
-                        // Grab the IDs of everyone currently connected to the socket
-                        const liveIds = msg.participants.map(p => p.id);
-                        
-                        // Add any new users to the grid
-                        msg.participants.forEach((p) => {
-                            // Only add if they aren't already there via WebRTC
-                            if (!next[p.id]) {
-                                next[p.id] = { name: p.name, isWs: true };
-                            }
-                        });
+                    if (msg.event === "countUpdate" && typeof msg.count === "number") {
+                        setLiveHandRaiseCount(msg.count);
+                    }
 
-                        // Remove anyone who closed their browser
-                        Object.keys(next).forEach((key) => {
-                            if (next[key].isWs && !liveIds.includes(key)) {
-                                delete next[key];
-                            }
-                        });
+                    if (msg.type === "participant_list") {
+                        console.log("Live Grid Update:", msg.participants);
+                        setLiveParticipants(msg.participants);
+                        
+                        setRoomPeers((prevPeers) => {
+                            const next = { ...prevPeers };
+                            const liveIds = msg.participants.map(p => p.id);
+                            
+                            msg.participants.forEach((p) => {
+                                if (!next[p.id]) {
+                                    next[p.id] = { name: p.name, isWs: true };
+                                }
+                            });
 
-                        return next;
-                    });
+                            Object.keys(next).forEach((key) => {
+                                if (next[key].isWs && !liveIds.includes(key)) {
+                                    delete next[key];
+                                }
+                            });
+
+                            return next;
+                        });
+                    }
+                } catch (err) {
+                    console.error("[ParticipantWS] parse error", err);
                 }
-            } catch (err) {
-                console.error("[ParticipantWS] parse error", err);
-            }
+            };
+
+            socket.onerror = (err) => {
+                console.warn("[ParticipantWS] error", err);
+            };
+
+            socket.onclose = (event) => {
+                if (isUnmounted) return;
+                console.log("[ParticipantWS] closed:", event.code, event.reason);
+                participantWsRef.current = null;
+
+                if (retryCount < maxRetries) {
+                    retryCount++;
+                    const backoffTime = Math.min(1000 * Math.pow(2, retryCount), 10000);
+                    console.log(`[ParticipantWS] Retrying connection in ${backoffTime}ms (Attempt ${retryCount}/${maxRetries})`);
+                    if (!toastId) {
+                        toastId = toast.loading("Connection lost. Reconnecting...", { id: "ws-reconnect-part" });
+                    }
+                    reconnectTimeout = setTimeout(connect, backoffTime);
+                } else {
+                    if (toastId) {
+                        toast.error("Failed to connect to meeting. Please refresh the page.", { id: toastId });
+                    } else {
+                        toast.error("Failed to connect to meeting. Please refresh the page.");
+                    }
+                }
+            };
         };
 
-        pWs.onerror = (err) => console.warn("[ParticipantWS] error", err);
-        pWs.onclose = () => console.log("[ParticipantWS] closed");
+        connect();
 
         return () => {
-            if (pWs.readyState === WebSocket.OPEN || pWs.readyState === WebSocket.CONNECTING) {
-                pWs.close();
+            isUnmounted = true;
+            if (reconnectTimeout) clearTimeout(reconnectTimeout);
+            if (socket) {
+                if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+                    socket.close();
+                }
             }
             participantWsRef.current = null;
+            if (toastId) toast.dismiss(toastId);
         };
-    }, [meetingId, participantName]);
+    }, [meetingId, participantName, userId]);
 
     const updateParticipantState = async (mic, video, hand) => {
         try {
@@ -513,16 +452,38 @@ const MeetingRoom = () => {
         }
     };
 
-    const toggleMic = () => {
+    const toggleMic = async () => {
         const newMicState = !isMicOn;
         setIsMicOn(newMicState);
+        if (lkRoomRef.current && lkRoomRef.current.state === "connected") {
+            await lkRoomRef.current.localParticipant.setMicrophoneEnabled(newMicState);
+        }
+        if (localStreamRef.current) {
+            localStreamRef.current.getAudioTracks().forEach((track) => {
+                track.enabled = newMicState;
+            });
+        }
         updateParticipantState(newMicState, isVideoOn, isHandRaised);
     };
 
-    const toggleVideo = () => {
+    const toggleVideo = async () => {
         const newVideoState = !isVideoOn;
         setIsVideoOn(newVideoState);
+        if (lkRoomRef.current && lkRoomRef.current.state === "connected") {
+            await lkRoomRef.current.localParticipant.setCameraEnabled(newVideoState);
+        }
+        if (localStreamRef.current) {
+            localStreamRef.current.getVideoTracks().forEach((track) => {
+                track.enabled = newVideoState;
+            });
+        }
         updateParticipantState(isMicOn, newVideoState, isHandRaised);
+    };
+
+    const formatTime = (time) => {
+        const minutes = Math.floor(time / 60);
+        const seconds = time % 60;
+        return `${minutes}:${seconds.toString().padStart(2, "0")}`;
     };
 
     const showHandRaiseGhost = (uid, name) => {
@@ -608,9 +569,13 @@ const MeetingRoom = () => {
                     participantName={participantName}
                     localVideoRef={localVideoRef}
                     isVideoOn={isVideoOn}
+                    isMicOn={isMicOn}
+                    remoteMicStates={remoteMicStates}
                     remoteStreams={remoteStreams}
                     roomPeers={roomPeers}
                     handRaiseCount={liveHandRaiseCount}
+                    liveParticipants={liveParticipants}
+                    userId={userId}
                 />
 
                 <Sidebar

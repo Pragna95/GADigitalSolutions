@@ -44,14 +44,41 @@ const NotFound = () => (
   </div>
 );
 
+const isTokenExpired = (token) => {
+  if (!token) return true;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return true;
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    const payload = JSON.parse(jsonPayload);
+    if (!payload.exp) return false;
+    return Date.now() >= payload.exp * 1000;
+  } catch (e) {
+    return true;
+  }
+};
+
 /* -----------------------------
    Protected Route
------------------------------ */
+   ----------------------------- */
 const ProtectedRoute = ({ children }) => {
   const token = localStorage.getItem("token");
   const location = useLocation();
 
-  if (!token) {
+  if (!token || isTokenExpired(token)) {
+    localStorage.removeItem("token");
+    localStorage.removeItem("refresh");
+    localStorage.removeItem("email");
+    localStorage.removeItem("name");
+    localStorage.removeItem("user_id");
+
     sessionStorage.setItem(
       "redirect_after_login",
       location.pathname
@@ -102,32 +129,6 @@ const Messaging = () => (
    App
 ----------------------------- */
 function App() {
-  useEffect(() => {
-    const handleCopy = (e) => {
-      const target = e.target;
-      const isInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
-      if (!isInput) {
-        e.preventDefault();
-      }
-    };
-    
-    const handleContextMenu = (e) => {
-      const target = e.target;
-      const isInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
-      if (!isInput) {
-        e.preventDefault();
-      }
-    };
-
-    document.addEventListener("copy", handleCopy);
-    document.addEventListener("contextmenu", handleContextMenu);
-
-    return () => {
-      document.removeEventListener("copy", handleCopy);
-      document.removeEventListener("contextmenu", handleContextMenu);
-    };
-  }, []);
-
   return (
     <>
       <Toaster position="top-right" />
@@ -145,7 +146,28 @@ function App() {
           <Route path="/signup" element={<SignupAuth />} />
           <Route path="/auth-return" element={<AuthReturn />} />
 
-          {/* Meetings */}
+          {/* Static Pages */}
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <DashboardUI />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/message"
+            element={
+              <ProtectedRoute>
+                <Messaging />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/thank-you" element={<ThankYou />} />
 
           <Route
             path="/meeting"
@@ -156,94 +178,12 @@ function App() {
             }
           />
 
-          {/* New professional format */}
-          {/* <Route
-            path="/:meetingCode/:apiKey/:meetingId"
-            element={<MeetingLobby />}
-          />
-
-          <Route
-            path="/:meetingCode/:meetingId"
-            element={<MeetingLobby />}
-          /> */}
-          <Route
-            path="/:meetingCode/:apiKey/:meetingId"
-            element={
-              <ProtectedRoute>
-                <MeetingLobby />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/:meetingCode/:meetingId"
-            element={
-              <ProtectedRoute>
-                <MeetingLobby />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/:company/:letter/:api_key/:meeting_id"
-            element={
-              <ProtectedRoute>
-                <MeetingLobby />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* Legacy links */}
-          <Route
-            path="/meeting/:company/:api_key/:meeting_id"
-            element={
-              <ProtectedRoute>
-                <MeetingLobby />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/meeting/:company/:letter/:api_key/:meeting_id"
-            element={
-              <ProtectedRoute>
-                <MeetingLobby />
-              </ProtectedRoute>
-            }
-          />
-
+          {/* Specific Parameterized Paths */}
           <Route
             path="/lobby/:meeting_id"
             element={
               <ProtectedRoute>
                 <MeetingLobby />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/meeting/:company/:letter/:api_key/room/:meeting_id"
-            element={
-              <ProtectedRoute>
-                <Meeting />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/meeting/:company/:api_key/room/:meeting_id"
-            element={
-              <ProtectedRoute>
-                <Meeting />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/:company/:letter/:api_key/room/:meeting_id"
-            element={
-              <ProtectedRoute>
-                <Meeting />
               </ProtectedRoute>
             }
           />
@@ -265,32 +205,80 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="/thank-you" element={<ThankYou />} />
 
-          {/* Protected Routes */}
-
-
+          {/* Parameterized Paths with Static Prefixes */}
           <Route
-            path="/dashboard"
+            path="/meeting/:company/:letter/:api_key/room/:meeting_id"
             element={
               <ProtectedRoute>
-                <DashboardUI />
+                <Meeting />
               </ProtectedRoute>
             }
           />
 
           <Route
-            path="/message"
+            path="/meeting/:company/:api_key/room/:meeting_id"
             element={
               <ProtectedRoute>
-                <Messaging />
+                <Meeting />
               </ProtectedRoute>
             }
           />
 
-          {/* Misc */}
-          <Route path="/profile" element={<Profile />} />
-          <Route path="/settings" element={<Settings />} />
+          <Route
+            path="/meeting/:company/:api_key/:meeting_id"
+            element={
+              <ProtectedRoute>
+                <MeetingLobby />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/meeting/:company/:letter/:api_key/:meeting_id"
+            element={
+              <ProtectedRoute>
+                <MeetingLobby />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Generic Wildcard Parameterized Paths */}
+          <Route
+            path="/:company/:letter/:api_key/room/:meeting_id"
+            element={
+              <ProtectedRoute>
+                <Meeting />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/:company/:letter/:api_key/:meeting_id"
+            element={
+              <ProtectedRoute>
+                <MeetingLobby />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/:meetingCode/:apiKey/:meetingId"
+            element={
+              <ProtectedRoute>
+                <MeetingLobby />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/:meetingCode/:meetingId"
+            element={
+              <ProtectedRoute>
+                <MeetingLobby />
+              </ProtectedRoute>
+            }
+          />
 
           {/* 404 */}
           <Route path="*" element={<NotFound />} />

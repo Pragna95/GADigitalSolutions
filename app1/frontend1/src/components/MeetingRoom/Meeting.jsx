@@ -1,8 +1,16 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import axios from "axios";
+import { microserviceApi } from "../../services/api.js";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { Room, RoomEvent, Track } from "livekit-client";
+import { startScreenShare, stopScreenShare } from "../../api/meeting.js";
+
+const apiBaseUrl = import.meta.env.VITE_MICROSERVICE_URL || "http://localhost:8000";
+const wsBaseUrl = import.meta.env.VITE_WS_URL || 
+    (import.meta.env.VITE_MICROSERVICE_URL ? 
+        import.meta.env.VITE_MICROSERVICE_URL.replace(/^http/, "ws") : 
+        "ws://localhost:8000");
 
 // Subcomponents
 import Header from "./Header.jsx";
@@ -59,12 +67,12 @@ const Meeting = () => {
             try {
                 let response;
                 if (company && api_key) {
-                    response = await axios.get(
-                        `http://127.0.0.1:8000/api/meeting/validate/${company}/${api_key}/${meetingId}/`
+                    response = await microserviceApi.get(
+                        `/api/meeting/validate/${company}/${api_key}/${meetingId}/`
                     );
                 } else {
-                    response = await axios.get(
-                        `http://127.0.0.1:8000/api/meeting/validate-lobby/${meetingId}/`
+                    response = await microserviceApi.get(
+                        `/api/meeting/validate-lobby/${meetingId}/`
                     );
                 }
                 if (response.data && response.data.title) {
@@ -95,7 +103,7 @@ const Meeting = () => {
     const userId = userIdRef.current;
 
     const meetingLink = meetingId;
-    const API_URL = "http://127.0.0.1:8000/api/meetings";
+    const API_URL = `${apiBaseUrl}/api/meetings`;
 
     // Camera/Mic and LiveKit refs
     const localVideoRef = useRef(null);
@@ -107,14 +115,7 @@ const Meeting = () => {
     const [roomPeers, setRoomPeers] = useState({});
     const [liveParticipants, setLiveParticipants] = useState([]);
 
-    useEffect(() => {
-        console.log("ROOM PEERS:", roomPeers);
-        console.log("REMOTE STREAMS:", remoteStreams);
-    }, [roomPeers, remoteStreams]);
 
-    useEffect(() => {
-        console.log("LIVE PARTICIPANTS STATE", participantName, liveParticipants.length, liveParticipants);
-    }, [liveParticipants, participantName]);
 
     const [isWebRtcReady, setIsWebRtcReady] = useState(false);
 
@@ -209,7 +210,7 @@ const Meeting = () => {
                 let url = "";
                 try {
                     // 1. Fetch token from backend
-                    const tokenResponse = await axios.post("http://127.0.0.1:8000/api/meetings/token/", {
+                    const tokenResponse = await microserviceApi.post(`/api/meetings/token/`, {
                         meeting_id: meetingId,
                         user_id: userId,
                         name: participantName,
@@ -244,11 +245,30 @@ const Meeting = () => {
                         };
 
                         room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
-                            updateRemoteParticipantStream(participant);
-                            syncMicState(publication, participant);
+                            if (track.source === Track.Source.ScreenShare) {
+                                const stream = new MediaStream([track.mediaStreamTrack]);
+                                setScreenStream(stream);
+                                setIsAnotherUserSharing(true);
+                                const presenterName = participant.name || participant.identity;
+                                setScreenSharer({
+                                    user_id: participant.identity,
+                                    name: presenterName
+                                });
+                                setSharerLabel(presenterName);
+                            } else {
+                                updateRemoteParticipantStream(participant);
+                                syncMicState(publication, participant);
+                            }
                         });
                         room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
-                            updateRemoteParticipantStream(participant);
+                            if (track.source === Track.Source.ScreenShare) {
+                                setScreenStream(null);
+                                setIsAnotherUserSharing(false);
+                                setScreenSharer(null);
+                                setSharerLabel("");
+                            } else {
+                                updateRemoteParticipantStream(participant);
+                            }
                         });
                         room.on(RoomEvent.TrackMuted, (publication, participant) => {
                             syncMicState(publication, participant);
@@ -358,174 +378,219 @@ const Meeting = () => {
     useEffect(() => {
         if (!meetingId) return;
 
-        const wsUrl = `ws://127.0.0.1:8000/ws/participants/${meetingId}/`;
-        const pWs = new WebSocket(wsUrl);
-        participantWsRef.current = pWs;
+        let socket = null;
+        let reconnectTimeout = null;
+        let retryCount = 0;
+        const maxRetries = 10;
+        let isUnmounted = false;
+        let toastId = null;
 
-        pWs.onopen = () => {
-            console.log("[ParticipantWS] Connected:", wsUrl);
-            pWs.send(JSON.stringify({
-                type: "participant_join",
-                name: participantName,
-                user_id: userId
-            }));
-        };
+        const connect = () => {
+            if (isUnmounted) return;
+            const wsUrl = `${wsBaseUrl}/ws/participants/${meetingId}/`;
+            socket = new WebSocket(wsUrl);
+            participantWsRef.current = socket;
 
-        pWs.onmessage = (event) => {
-            try {
-                const msg = JSON.parse(event.data);
-                const data = msg;
-
-                if (data.event === "moderation") {
-                    if (data.action === "kick" && data.target_identity === userId) {
-                        toast.error("You have been kicked from the meeting by the host.");
-                        setTimeout(() => {
-                            navigate("/thank-you", {
-                                state: {
-                                    company,
-                                    letter,
-                                    api_key,
-                                    meetingId: meetingId,
-                                    role: userRole,
-                                    name: participantName
-                                }
-                            });
-                        }, 1500);
-                    } else if (data.action === "end_meeting") {
-                        toast.error("The meeting has been ended by the host.");
-                        setTimeout(() => {
-                            navigate("/thank-you", {
-                                state: {
-                                    company,
-                                    letter,
-                                    api_key,
-                                    meetingId: meetingId,
-                                    role: userRole,
-                                    name: participantName
-                                }
-                            });
-                        }, 1500);
-                    }
+            socket.onopen = () => {
+                if (isUnmounted) {
+                    socket.close();
                     return;
                 }
-
-                if (
-                    data.type === "hand_count_init" ||
-                    data.type === "hand_count_update"
-                ) {
-                    setLiveHandRaiseCount(data.count || 0);
-                    return;
+                console.log("[ParticipantWS] Connected:", wsUrl);
+                retryCount = 0;
+                if (toastId) {
+                    toast.success("Reconnected to meeting!", { id: toastId });
+                    toastId = null;
                 }
+                socket.send(JSON.stringify({
+                    type: "participant_join",
+                    name: participantName,
+                    user_id: userId
+                }));
+            };
 
-                // ✅ FIX 2: ParticipantWS నుండి వచ్చే hand_raise events handle చేస్తున్నాం
-                // ఇప్పుడు toggleHandRaise లో participantWsRef కి పంపుతున్నాం
-                // కాబట్టి ఇక్కడ receive చేసి ghost notification చూపిస్తున్నాం
-                if (data.type === "hand_raise") {
-                    setHandRaisedUsers((prev) => {
-                        const next = { ...prev };
-                        if (data.is_raised) {
-                            const name = data.user_name || `Guest ${data.user_id.slice(-4)}`;
-                            next[data.user_id] = name;
-                            // Self తప్ప అందరికీ ghost notification చూపించు
-                            if (data.user_id !== userId) {
-                                showHandRaiseGhost(data.user_id, name);
-                            }
-                        } else {
-                            delete next[data.user_id];
-                            setHandRaiseNotifications((prev) => prev.filter((n) => n.uid !== data.user_id));
-                            if (handRaiseTimers.current[data.user_id]) {
-                                clearTimeout(handRaiseTimers.current[data.user_id]);
-                                delete handRaiseTimers.current[data.user_id];
-                            }
+            socket.onmessage = (event) => {
+                if (isUnmounted) return;
+                try {
+                    const msg = JSON.parse(event.data);
+                    const data = msg;
+
+                    if (data.event === "moderation") {
+                        if (data.action === "kick" && data.target_identity === userId) {
+                            toast.error("You have been kicked from the meeting by the host.");
+                            setTimeout(() => {
+                                navigate("/thank-you", {
+                                    state: {
+                                        company,
+                                        letter,
+                                        api_key,
+                                        meetingId: meetingId,
+                                        role: userRole,
+                                        name: participantName
+                                    }
+                                });
+                            }, 1500);
+                        } else if (data.action === "end_meeting") {
+                            toast.error("The meeting has been ended by the host.");
+                            setTimeout(() => {
+                                navigate("/thank-you", {
+                                    state: {
+                                        company,
+                                        letter,
+                                        api_key,
+                                        meetingId: meetingId,
+                                        role: userRole,
+                                        name: participantName
+                                    }
+                                });
+                            }, 1500);
                         }
-                        return next;
-                    });
-                    return;
-                }
+                        return;
+                    }
 
-                if (msg.event === "countUpdate" && typeof msg.count === "number") {
-                    setLiveHandRaiseCount(msg.count);
-                } else if (msg.event === "state_changed" && msg.user_id && msg.user_id !== userId) {
-                    if (msg.mic_on !== undefined) {
-                        setRemoteMicStates((prev) => ({
+                    if (
+                        data.type === "hand_count_init" ||
+                        data.type === "hand_count_update"
+                    ) {
+                        setLiveHandRaiseCount(data.count || 0);
+                        return;
+                    }
+
+                    if (data.type === "hand_raise") {
+                        setHandRaisedUsers((prev) => {
+                            const next = { ...prev };
+                            if (data.is_raised) {
+                                const name = data.user_name || `Guest ${data.user_id.slice(-4)}`;
+                                next[data.user_id] = name;
+                                if (data.user_id !== userId) {
+                                    showHandRaiseGhost(data.user_id, name);
+                                }
+                            } else {
+                                delete next[data.user_id];
+                                setHandRaiseNotifications((prev) => prev.filter((n) => n.uid !== data.user_id));
+                                if (handRaiseTimers.current[data.user_id]) {
+                                    clearTimeout(handRaiseTimers.current[data.user_id]);
+                                    delete handRaiseTimers.current[data.user_id];
+                                }
+                            }
+                            return next;
+                        });
+                        return;
+                    }
+
+                    if (msg.event === "countUpdate" && typeof msg.count === "number") {
+                        setLiveHandRaiseCount(msg.count);
+                    } else if (msg.event === "state_changed" && msg.user_id && msg.user_id !== userId) {
+                        if (msg.mic_on !== undefined) {
+                            setRemoteMicStates((prev) => ({
+                                ...prev,
+                                [msg.user_id]: msg.mic_on
+                            }));
+                        }
+                        setHandRaisedUsers((prev) => {
+                            const next = { ...prev };
+                            if (msg.hand_raised) {
+                                const name = msg.username || `Guest ${msg.user_id.slice(-4)}`;
+                                next[msg.user_id] = name;
+                                showHandRaiseGhost(msg.user_id, name);
+                            } else {
+                                delete next[msg.user_id];
+                            }
+                            return next;
+                        });
+                    }
+
+                    if (msg.type === "presence_event") {
+                        const presenceName = msg.name || "Someone";
+                        const isJoin = msg.event === "joined";
+                        const notifId = `presence-${msg.user_id}-${Date.now()}`;
+                        setHandRaiseNotifications((prev) => [
                             ...prev,
-                            [msg.user_id]: msg.mic_on
-                        }));
+                            {
+                                id: notifId,
+                                uid: `presence-${msg.user_id}`,
+                                name: presenceName,
+                                isPresence: true,
+                                presenceType: isJoin ? "joined" : "left",
+                            }
+                        ]);
+                        setTimeout(() => {
+                            setHandRaiseNotifications((prev) => prev.filter((n) => n.id !== notifId));
+                        }, 4000);
+                        return;
                     }
-                    setHandRaisedUsers((prev) => {
-                        const next = { ...prev };
-                        if (msg.hand_raised) {
-                            const name = msg.username || `Guest ${msg.user_id.slice(-4)}`;
-                            next[msg.user_id] = name;
-                            showHandRaiseGhost(msg.user_id, name);
-                        } else {
-                            delete next[msg.user_id];
-                        }
-                        return next;
-                    });
-                }
 
-                // ✅ Join/Leave ghost notifications — అన్ని tabs కి broadcast వస్తుంది
-                if (msg.type === "presence_event") {
-                    const presenceName = msg.name || "Someone";
-                    const isJoin = msg.event === "joined";
-                    const notifId = `presence-${msg.user_id}-${Date.now()}`;
-                    setHandRaiseNotifications((prev) => [
-                        ...prev,
-                        {
-                            id: notifId,
-                            uid: `presence-${msg.user_id}`,
-                            name: presenceName,
-                            isPresence: true,
-                            presenceType: isJoin ? "joined" : "left",
-                        }
-                    ]);
-                    setTimeout(() => {
-                        setHandRaiseNotifications((prev) => prev.filter((n) => n.id !== notifId));
-                    }, 4000);
-                    return;
-                }
-
-                if (msg.type === "participant_list") {
-                    console.log(
-                        "PARTICIPANT LIST RECEIVED",
-                        participantName,
-                        msg.participants.length,
-                        msg.participants
-                    );
-                    setLiveParticipants(msg.participants);
-                    setRoomPeers((prevPeers) => {
-                        const next = { ...prevPeers };
-                        const liveWsIds = msg.participants.map(p => p.id);
-                        msg.participants.forEach((p) => {
-                            if (!next[p.id]) {
-                                next[p.id] = { name: p.name, isWs: true };
-                            }
+                    if (msg.type === "participant_list") {
+                        console.log(
+                            "PARTICIPANT LIST RECEIVED",
+                            participantName,
+                            msg.participants.length,
+                            msg.participants
+                        );
+                        setLiveParticipants(msg.participants);
+                        setRoomPeers((prevPeers) => {
+                            const next = { ...prevPeers };
+                            const liveWsIds = msg.participants.map(p => p.id);
+                            msg.participants.forEach((p) => {
+                                if (!next[p.id]) {
+                                    next[p.id] = { name: p.name, isWs: true };
+                                }
+                            });
+                            Object.keys(next).forEach((key) => {
+                                if (next[key].isWs && !liveWsIds.includes(key)) {
+                                    delete next[key];
+                                }
+                            });
+                            return next;
                         });
-                        Object.keys(next).forEach((key) => {
-                            if (next[key].isWs && !liveWsIds.includes(key)) {
-                                delete next[key];
-                            }
-                        });
-                        return next;
-                    });
-                }
+                    }
 
-            } catch (err) {
-                console.error("[ParticipantWS] parse error", err);
-            }
+                } catch (err) {
+                    console.error("[ParticipantWS] parse error", err);
+                }
+            };
+
+            socket.onerror = (err) => {
+                console.warn("[ParticipantWS] error", err);
+            };
+
+            socket.onclose = (event) => {
+                if (isUnmounted) return;
+                console.log("[ParticipantWS] closed:", event.code, event.reason);
+                participantWsRef.current = null;
+
+                if (retryCount < maxRetries) {
+                    retryCount++;
+                    const backoffTime = Math.min(1000 * Math.pow(2, retryCount), 10000);
+                    console.log(`[ParticipantWS] Retrying connection in ${backoffTime}ms (Attempt ${retryCount}/${maxRetries})`);
+                    if (!toastId) {
+                        toastId = toast.loading("Connection lost. Reconnecting...", { id: "ws-reconnect-part" });
+                    }
+                    reconnectTimeout = setTimeout(connect, backoffTime);
+                } else {
+                    if (toastId) {
+                        toast.error("Failed to connect to meeting. Please refresh the page.", { id: toastId });
+                    } else {
+                        toast.error("Failed to connect to meeting. Please refresh the page.");
+                    }
+                }
+            };
         };
 
-        pWs.onerror = (err) => console.warn("[ParticipantWS] error", err);
-        pWs.onclose = () => console.log("[ParticipantWS] closed");
+        connect();
 
         return () => {
-            if (pWs.readyState === WebSocket.OPEN || pWs.readyState === WebSocket.CONNECTING) {
-                pWs.close();
+            isUnmounted = true;
+            if (reconnectTimeout) clearTimeout(reconnectTimeout);
+            if (socket) {
+                if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+                    socket.close();
+                }
             }
             participantWsRef.current = null;
+            if (toastId) toast.dismiss(toastId);
         };
-    }, [meetingId, participantName, userId]);
+    },[meetingId, participantName, userId]);
 
     const formatTime = (time) => {
         const minutes = Math.floor(time / 60);
@@ -716,7 +781,7 @@ const Meeting = () => {
 
     const handleKickParticipant = async (targetUserId, targetName) => {
         try {
-            await axios.post("http://127.0.0.1:8000/api/meetings/moderate/", {
+            await microserviceApi.post(`/api/meetings/moderate/`, {
                 meeting_id: meetingId,
                 action: "kick",
                 target_identity: targetUserId
@@ -730,7 +795,7 @@ const Meeting = () => {
 
     const handleEndMeeting = async () => {
         try {
-            await axios.post("http://127.0.0.1:8000/api/meetings/moderate/", {
+            await microserviceApi.post(`/api/meetings/moderate/`, {
                 meeting_id: meetingId,
                 action: "end_meeting"
             });
@@ -754,6 +819,8 @@ const Meeting = () => {
     const [isLocalScreenSharing, setIsLocalScreenSharing] = useState(false);
     const [isAnotherUserSharing, setIsAnotherUserSharing] = useState(false);
     const [sharerLabel, setSharerLabel] = useState("");
+    const [screenStream, setScreenStream] = useState(null);
+    const [screenSharer, setScreenSharer] = useState(null);
     const isScreenSharing = isLocalScreenSharing || isAnotherUserSharing;
 
     const [screenShareNotice, setScreenShareNotice] = useState("");
@@ -777,18 +844,58 @@ const Meeting = () => {
         };
     }, []);
 
-    useEffect(() => {
-        const handleStateUpdate = (e) => {
-            const { isLocalScreenSharing, isAnotherUserSharing, sharerLabel } = e.detail;
-            setIsLocalScreenSharing(isLocalScreenSharing);
-            setIsAnotherUserSharing(isAnotherUserSharing);
-            setSharerLabel(sharerLabel);
-        };
-        window.addEventListener("screen-share-state-update", handleStateUpdate);
-        return () => {
-            window.removeEventListener("screen-share-state-update", handleStateUpdate);
-        };
-    }, []);
+    const handleScreenShare = async () => {
+        try {
+            if (isAnotherUserSharing) {
+                showScreenShareNotice(`${sharerLabel} is already sharing the screen. Only one participant can share at a time.`);
+                return;
+            }
+            const room = lkRoomRef.current;
+            if (room && room.state === "connected") {
+                const trackPub = await room.localParticipant.setScreenShareEnabled(true);
+                const track = trackPub.track;
+                if (track && track.mediaStreamTrack) {
+                    const stream = new MediaStream([track.mediaStreamTrack]);
+                    setScreenStream(stream);
+                    setIsLocalScreenSharing(true);
+                    setScreenSharer({ user_id: userId, name: displayName });
+                    setSharerLabel(displayName);
+
+                    track.mediaStreamTrack.onended = () => {
+                        stopSharing();
+                    };
+
+                    try {
+                        await startScreenShare(meetingId, userId);
+                    } catch (err) {
+                        console.warn("Failed to notify backend of screen share start:", err);
+                    }
+                }
+            }
+        } catch (err) {
+            console.error("Failed to start screen share:", err);
+        }
+    };
+
+    const stopSharing = async () => {
+        try {
+            const room = lkRoomRef.current;
+            if (room && room.state === "connected") {
+                await room.localParticipant.setScreenShareEnabled(false);
+            }
+        } catch (err) {
+            console.warn("Failed to stop screen share in LiveKit:", err);
+        }
+        setScreenStream(null);
+        setIsLocalScreenSharing(false);
+        setScreenSharer(null);
+        setSharerLabel("");
+        try {
+            await stopScreenShare(meetingId, userId);
+        } catch (err) {
+            console.warn("Failed to notify backend of screen share stop:", err);
+        }
+    };
 
     const handleShareClick = () => {
         if (isAnotherUserSharing) {
@@ -798,9 +905,9 @@ const Meeting = () => {
             return;
         }
         if (isLocalScreenSharing) {
-            window.dispatchEvent(new CustomEvent("request-stop-screen-share"));
+            stopSharing();
         } else {
-            window.dispatchEvent(new CustomEvent("request-start-screen-share"));
+            handleScreenShare();
         }
     };
 
@@ -912,12 +1019,13 @@ const Meeting = () => {
                 <ScreenShareModule
                     userId={userId}
                     displayName={displayName}
-                    meetingId={meetingId}
-                    meetingLink={meetingLink}
-                    roomParticipants={roomParticipants}
-                    setRoomParticipants={setRoomParticipants}
-                    roomParticipantsRef={roomParticipantsRef}
                     isMicOn={isMicOn}
+                    isLocalScreenSharing={isLocalScreenSharing}
+                    isAnotherUserSharing={isAnotherUserSharing}
+                    screenSharer={screenSharer}
+                    screenStream={screenStream}
+                    stopSharing={stopSharing}
+                    liveParticipants={liveParticipants}
                 />
             </main>
 

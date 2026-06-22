@@ -115,37 +115,24 @@ def get_meeting_by_identifier(meeting_identifier):
              meeting_code=str(meeting_identifier)
          ).first()
 
-def get_user_by_identifier(product, user_identifier, name=None):
-    if not user_identifier:
-        return None
+from django.db import IntegrityError
 
+def get_user_by_identifier(product, uuid_value, name=None):
     try:
-        uuid_value = UUID(str(user_identifier))
         return User.objects.get(id=uuid_value)
-    except (ValueError, TypeError, User.DoesNotExist):
-        user = User.objects.filter(product=product, external_user_id=str(user_identifier)).first()
-        if user:
-            return user
-
-        # Attempt to parse as UUID to use as primary key
-        try:
-            uuid_value = UUID(str(user_identifier))
-        except (ValueError, TypeError):
-            uuid_value = None
-
+    except (ValueError, User.DoesNotExist):
         create_kwargs = {
+            "id": uuid_value,
             "product": product,
-            "external_user_id": str(user_identifier),
-            "email": f"{user_identifier}@huddle.local",
-            "name": name or str(user_identifier),
-            "role": "participant"
+            "name": name or "Unknown User",
+            "external_user_id": str(uuid_value),
+            "role": "participant",
         }
-        if uuid_value:
-            create_kwargs["id"] = uuid_value
-
-        # Create a participant record
-        return User.objects.create(**create_kwargs)
-
+        try:
+            return User.objects.create(**create_kwargs)
+        except IntegrityError:
+            # Lost the race — someone else just inserted it. Just fetch it.
+            return User.objects.get(id=uuid_value)
 
 class ScheduleMeetingView(APIView):
     permission_classes = [AllowAny]
@@ -406,7 +393,7 @@ class ParticipantStateView(APIView):
         try:
             user = None
             try:
-                user = User.objects.get(id=UUID(user_id))
+                user = User.objects.get(id=user_id)
             except (ValueError, User.DoesNotExist):
                 user = User.objects.filter(product=meeting.product, external_user_id=user_id).first()
 

@@ -54,7 +54,6 @@ const VideoStage = ({
             });
         });
 
-        console.log("ACTIVE PARTICIPANTS", list);
         return list;
     }, [participantName, userId, liveParticipants, remoteStreams, roomPeers, isMicOn, remoteMicStates]);
 
