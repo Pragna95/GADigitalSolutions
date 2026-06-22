@@ -163,7 +163,7 @@ export default function ScheduledMeetings({ refreshTrigger }) {
           No scheduled meetings found.
         </p>
       ) : (
-        <div className="grid gap-4 max-h-[450px] overflow-y-auto pr-2">
+        <div className="grid gap-4 max-h-[450px] overflow-y-auto pr-2 no-scrollbar">
           {meetings.map((meeting) => (
             <div
               key={meeting.id}
@@ -190,15 +190,28 @@ export default function ScheduledMeetings({ refreshTrigger }) {
                     )}
                   </div>
                 </div>
-                
+
                 <div className="flex items-center gap-2 text-xs text-indigo-600 font-bold pl-11">
                   <span>{dayjs(meeting.datetime).format("MMMM D, YYYY - h:mm A")}</span>
                 </div>
               </div>
-              
-              <div className="flex items-center gap-1.5 bg-indigo-50/70 text-indigo-700 px-3.5 py-1.5 rounded-xl text-[11px] font-bold self-start sm:self-auto border border-indigo-100/50 shrink-0">
-                <Users className="size-3.5 text-indigo-500 shrink-0" />
-                <span>{meeting.participants?.length || 0} participants</span>
+
+              <div className="flex items-center gap-3 self-start sm:self-auto shrink-0">
+                <div className="flex items-center gap-1.5 bg-indigo-50/70 text-indigo-700 px-3.5 py-1.5 rounded-xl text-[11px] font-bold border border-indigo-100/50 shrink-0">
+                  <Users className="size-3.5 text-indigo-500 shrink-0" />
+                  <span>{meeting.participants?.length || 0} participants</span>
+                </div>
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteMeeting(meeting.id);
+                  }}
+                  className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl transition-all duration-200 cursor-pointer border border-transparent hover:border-red-200"
+                  title="Delete Scheduled Meeting"
+                >
+                  <Trash2 size={16} />
+                </button>
               </div>
             </div>
           ))}
@@ -253,12 +266,12 @@ export default function ScheduledMeetings({ refreshTrigger }) {
                         const emailInput = document.getElementById("add-invite-email");
                         const rawInput = emailInput?.value?.trim();
                         if (!rawInput) return;
-                        
+
                         const emails = rawInput
                           .split(",")
                           .map((e) => e.trim())
                           .filter(Boolean);
-                          
+
                         if (emails.length === 0) return;
 
                         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -285,10 +298,10 @@ export default function ScheduledMeetings({ refreshTrigger }) {
                           });
 
                           await Promise.all(invitePromises);
-                          
+
                           toast.success(`Successfully invited ${emails.length} participant(s)`);
                           if (emailInput) emailInput.value = "";
-                          
+
                           setSelectedMeeting((prev) => ({
                             ...prev,
                             participants: [...(prev.participants || []), ...emails],

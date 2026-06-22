@@ -57,7 +57,21 @@ const Meeting = () => {
     const { company, letter, api_key, meeting_id } = useParams();
     const meetingId = meeting_id || "b40842cc-954a-4bc1-a9da-9036a03e7657";
     const [searchParams] = useSearchParams();
-    const participantName = searchParams.get("name") || "Andaya";
+
+    // Load real logged in user state
+    const loggedInEmail = localStorage.getItem("email");
+    const loggedInName = localStorage.getItem("name") || localStorage.getItem("username");
+
+    const [userId, setUserId] = useState(loggedInEmail || (() => {
+        if (typeof crypto !== "undefined" && crypto.randomUUID) {
+            return crypto.randomUUID();
+        }
+        return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c =>
+            (+c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> +c / 4).toString(16)
+        );
+    })());
+
+    const [participantName, setParticipantName] = useState(loggedInName || searchParams.get("name") || "Guest");
     const displayName = participantName;
     const [userRole, setUserRole] = useState(searchParams.get("role") || "participant");
     const [meetingTitle, setMeetingTitle] = useState("Huddle");
@@ -86,24 +100,58 @@ const Meeting = () => {
     }, [company, api_key, meetingId]);
 
 
-    // Generate unique random UUID per tab
-    const generateFreshId = () => {
-        if (typeof crypto !== "undefined" && crypto.randomUUID) {
-            return crypto.randomUUID();
-        }
-        return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c =>
-            (+c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> +c / 4).toString(16)
-        );
-    };
-
-    const userIdRef = useRef(undefined);
-    if (userIdRef.current === undefined) {
-        userIdRef.current = generateFreshId();
-    }
-    const userId = userIdRef.current;
-
     const meetingLink = meetingId;
     const API_URL = `${apiBaseUrl}/api/meetings`;
+
+    const [livekitToken, setLivekitToken] = useState("");
+    const [livekitUrl, setLivekitUrl] = useState("");
+    const [isTokenLoaded, setIsTokenLoaded] = useState(false);
+
+    const initialUserIdRef = useRef(userId);
+    const initialParticipantNameRef = useRef(participantName);
+    const initialUserRoleRef = useRef(userRole);
+
+    useEffect(() => {
+        const fetchToken = async () => {
+            try {
+                const tokenResponse = await microserviceApi.post(`/api/meetings/token/`, {
+                    meeting_id: meetingId,
+                    user_id: initialUserIdRef.current,
+                    name: initialParticipantNameRef.current,
+                    role: initialUserRoleRef.current
+                });
+                if (tokenResponse.data) {
+                    setLivekitToken(tokenResponse.data.token || "");
+                    setLivekitUrl(tokenResponse.data.url || "");
+                    const returnedRole = tokenResponse.data.role;
+                    if (returnedRole) {
+                        setUserRole(returnedRole);
+                    }
+                    if (tokenResponse.data.identity) {
+                        setUserId(tokenResponse.data.identity);
+                    }
+                    if (tokenResponse.data.name) {
+                        setParticipantName(tokenResponse.data.name);
+                    }
+                }
+            } catch (e) {
+                console.warn("Failed to fetch LiveKit token from backend:", e);
+            } finally {
+                setIsTokenLoaded(true);
+            }
+        };
+        fetchToken();
+    }, [meetingId]);
+
+    useEffect(() => {
+        setRoomParticipants(prev => {
+            const selfExists = prev.some(p => p.isSelf);
+            if (selfExists) {
+                return prev.map(p => p.isSelf ? { ...p, userId, name: displayName } : p);
+            }
+            return [{ userId, name: displayName, isSelf: true }, ...prev];
+        });
+    }, [userId, displayName]);
 
     // Camera/Mic and LiveKit refs
     const localVideoRef = useRef(null);
@@ -186,6 +234,8 @@ const Meeting = () => {
 
     // LiveKit SFU setup and event routing
     useEffect(() => {
+        if (!isTokenLoaded) return;
+
         let active = true;
         const room = new Room({
             adaptiveStream: true,
@@ -206,32 +256,12 @@ const Meeting = () => {
                     console.warn("Failed to fetch initial participant state:", e);
                 }
 
-                let token = "";
-                let url = "";
-                try {
-                    // 1. Fetch token from backend
-                    const tokenResponse = await microserviceApi.post(`/api/meetings/token/`, {
-                        meeting_id: meetingId,
-                        user_id: userId,
-                        name: participantName,
-                        role: userRole
-                    });
-                    token = tokenResponse.data.token;
-                    url = tokenResponse.data.url;
-                    const returnedRole = tokenResponse.data.role;
-                    if (returnedRole) {
-                        setUserRole(returnedRole);
-                    }
-                } catch (e) {
-                    console.warn("Failed to fetch LiveKit token from backend:", e);
-                }
-
                 if (!active) return;
 
-                if (url && token) {
+                if (livekitUrl && livekitToken) {
                     try {
                         // 2. Connect to LiveKit SFU Server
-                        await room.connect(url, token);
+                        await room.connect(livekitUrl, livekitToken);
                         console.log("LiveKit Room Connected:", room.name);
 
                         // 3. Register listeners
@@ -372,11 +402,11 @@ const Meeting = () => {
                 lkRoomRef.current = null;
             }
         };
-    }, [meetingId, userId, participantName]);
+    }, [isTokenLoaded, livekitToken, livekitUrl]);
 
     // ── Participant WebSocket ──
     useEffect(() => {
-        if (!meetingId) return;
+        if (!meetingId || !isTokenLoaded) return;
 
         let socket = null;
         let reconnectTimeout = null;
@@ -590,7 +620,7 @@ const Meeting = () => {
             participantWsRef.current = null;
             if (toastId) toast.dismiss(toastId);
         };
-    },[meetingId, participantName, userId]);
+    },[meetingId, participantName, userId, isTokenLoaded]);
 
     const formatTime = (time) => {
         const minutes = Math.floor(time / 60);

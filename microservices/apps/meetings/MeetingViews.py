@@ -117,22 +117,65 @@ def get_meeting_by_identifier(meeting_identifier):
 
 from django.db import IntegrityError
 
-def get_user_by_identifier(product, uuid_value, name=None):
+def get_user_by_identifier(product, uuid_value, name=None, email=None):
+    from uuid import UUID
+    is_uuid = False
     try:
-        return User.objects.get(id=uuid_value)
-    except (ValueError, User.DoesNotExist):
-        create_kwargs = {
-            "id": uuid_value,
-            "product": product,
-            "name": name or "Unknown User",
-            "external_user_id": str(uuid_value),
-            "role": "participant",
-        }
+        uuid_obj = UUID(str(uuid_value))
+        is_uuid = True
+    except (ValueError, TypeError):
+        pass
+
+    user = None
+    if is_uuid:
         try:
-            return User.objects.create(**create_kwargs)
-        except IntegrityError:
-            # Lost the race — someone else just inserted it. Just fetch it.
-            return User.objects.get(id=uuid_value)
+            user = User.objects.get(id=uuid_value)
+        except User.DoesNotExist:
+            pass
+
+    if not user and email:
+        user = User.objects.filter(product=product, email__iexact=str(email)).first()
+
+    if not user:
+        if "@" in str(uuid_value):
+            user = User.objects.filter(product=product, email__iexact=str(uuid_value)).first()
+        if not user:
+            user = User.objects.filter(product=product, external_user_id=str(uuid_value)).first()
+
+    if user:
+        if name and user.name != name and name != "Unknown User":
+            user.name = name
+            user.save()
+        return user
+
+    create_kwargs = {
+        "product": product,
+        "name": name or "Unknown User",
+        "external_user_id": str(uuid_value),
+        "role": "participant",
+    }
+    if email:
+        create_kwargs["email"] = str(email)
+    elif "@" in str(uuid_value):
+        create_kwargs["email"] = str(uuid_value)
+    else:
+        create_kwargs["email"] = f"{uuid_value}@placeholder.com"
+
+    if is_uuid:
+        create_kwargs["id"] = uuid_value
+
+    try:
+        return User.objects.create(**create_kwargs)
+    except IntegrityError:
+        if email:
+            user = User.objects.filter(product=product, email__iexact=str(email)).first()
+        if not user and "@" in str(uuid_value):
+            user = User.objects.filter(product=product, email__iexact=str(uuid_value)).first()
+        if not user:
+            user = User.objects.filter(product=product, external_user_id=str(uuid_value)).first()
+        if not user and is_uuid:
+            user = User.objects.filter(id=uuid_value).first()
+        return user
 
 class ScheduleMeetingView(APIView):
     permission_classes = [AllowAny]
@@ -314,11 +357,14 @@ class ListMeetingsView(APIView):
                 if active_participants_count > 0:
                     is_ongoing = True
 
-            # Check completed state: ended session exists and not currently ongoing
+            # Check completed state: ended session exists and not currently ongoing, or scheduled_start is in the past
             has_ended_session = meeting.sessions.filter(status='ended').exists()
             is_completed = False
-            if not is_ongoing and has_ended_session:
-                is_completed = True
+            if not is_ongoing:
+                if has_ended_session:
+                    is_completed = True
+                elif meeting.scheduled_start and meeting.scheduled_start < timezone.now():
+                    is_completed = True
 
             participants = []
             for participant in getattr(meeting, 'participants', []).all() if hasattr(meeting, 'participants') else []:
@@ -455,7 +501,8 @@ class UpdateParticipantStateView(APIView):
         state = None
         if meeting:
             try:
-                user = get_user_by_identifier(meeting.product, user_identifier, name=username)
+                email = request.data.get("email") or user_identifier if "@" in str(user_identifier) else None
+                user = get_user_by_identifier(meeting.product, user_identifier, name=username, email=email)
                 if user:
                     state, _ = ParticipantState.objects.get_or_create(
                         meeting=meeting, user=user
@@ -552,7 +599,8 @@ class LiveKitTokenView(APIView):
             return Response({"error": "This meeting has ended and cannot be joined again"}, status=status.HTTP_400_BAD_REQUEST)
 
         # Ensure the user exists in our DB under this meeting's product
-        user = get_user_by_identifier(meeting.product, user_id, name=name)
+        email = request.data.get("email") or user_id if "@" in str(user_id) else None
+        user = get_user_by_identifier(meeting.product, user_id, name=name, email=email)
 
         # Check if the user is the host of this meeting. If so, overwrite role to "host"
         if meeting.created_by_user == user:

@@ -351,22 +351,26 @@ export default function HuddlePage() {
               <button
                 onClick={handleDeleteSelected}
                 disabled={selectedMeetings.size === 0}
-                className={`text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-all font-bold shadow-sm active:scale-98 cursor-pointer ${
+                className={`flex items-center justify-center h-9 w-9 rounded-xl border transition-all shadow-sm active:scale-95 cursor-pointer ${
                   selectedMeetings.size > 0
-                    ? "bg-red-50 text-red-600 border-red-200 hover:bg-red-100 hover:border-red-300"
+                    ? "bg-red-50 text-red-600 border-red-200 hover:bg-red-100 hover:border-red-300 hover:scale-105"
                     : "bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed opacity-50"
                 }`}
                 title="Delete Selected Instant Meetings"
               >
-                <Trash2 className="size-3.5 text-red-500" />
-                <span>Delete {selectedMeetings.size > 0 && `(${selectedMeetings.size})`}</span>
+                <Trash2 className="size-4 text-red-500" />
               </button>
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="text-xs text-slate-500 hover:text-[#1e2b72] flex items-center gap-1.5 cursor-pointer transition-all border border-slate-200 hover:border-[#1e2b72]/30 px-3 py-1.5 rounded-xl bg-white shadow-sm font-bold active:scale-98">
-                    <Filter className="size-3.5 text-indigo-500" />
-                    <span>Show: {ongoingFilter === "All" ? "All Ongoing" : ongoingFilter === "Instant" ? "Instant Only" : "Scheduled Only"}</span>
+                  <button className="group text-xs text-slate-600 hover:text-[#1e2b72] hover:border-[#1e2b72]/30 flex items-center gap-1.5 cursor-pointer transition-all border border-slate-200 px-3.5 py-2 rounded-xl bg-white shadow-sm font-bold active:scale-95 duration-200">
+                    <Filter className="size-3.5 text-indigo-500 group-hover:scale-110 transition-transform duration-200" />
+                    <span>Filter ⚙</span>
+                    {ongoingFilter !== "All" && (
+                      <span className="text-[9px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded-md font-black ml-1 animate-scale-in">
+                        {ongoingFilter}
+                      </span>
+                    )}
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48 bg-white border border-slate-200 rounded-2xl shadow-xl p-2 z-50 animate-scale-in">
@@ -397,29 +401,32 @@ export default function HuddlePage() {
           )}
 
           {activeTab !== "Ongoing" && (
-            <button className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1 cursor-pointer transition-colors">
-              Filter ⚙
+            <button className="group text-xs text-slate-400 hover:text-slate-500 flex items-center gap-1.5 transition-all border border-slate-200 px-3.5 py-2 rounded-xl bg-gray-50/50 cursor-not-allowed font-bold opacity-60">
+              <Filter className="size-3.5 text-slate-400" />
+              <span>Filter ⚙</span>
             </button>
           )}
         </div>
 
         {/* Session Cards */}
-        <div className="flex flex-col gap-4 animate-fade-in">
+        <div className="animate-fade-in">
           {activeTab === "Scheduled" ? (
             <ScheduledMeetings refreshTrigger={refreshTrigger} />
           ) : filteredSessions.length > 0 ? (
-            filteredSessions.map((s) => {
-              const isInstant = s.title === "Instant Huddle" || s.title === "Instant Meeting";
-              return (
-                <SessionCard
-                  key={s.id}
-                  session={s}
-                  onRefresh={() => setRefreshTrigger((prev) => prev + 1)}
-                  isSelected={selectedMeetings.has(s.id)}
-                  onToggleSelect={isInstant ? () => handleToggleSelect(s.id) : undefined}
-                />
-              );
-            })
+            <div className="flex flex-col gap-4 max-h-[450px] overflow-y-auto pr-2 no-scrollbar">
+              {filteredSessions.map((s) => {
+                const isInstant = s.title === "Instant Huddle" || s.title === "Instant Meeting";
+                return (
+                  <SessionCard
+                    key={s.id}
+                    session={s}
+                    onRefresh={() => setRefreshTrigger((prev) => prev + 1)}
+                    isSelected={selectedMeetings.has(s.id)}
+                    onToggleSelect={isInstant && activeTab !== "Completed" ? () => handleToggleSelect(s.id) : undefined}
+                  />
+                );
+              })}
+            </div>
           ) : (
             <p className="text-gray-400 text-sm italic">No sessions found.</p>
           )}
