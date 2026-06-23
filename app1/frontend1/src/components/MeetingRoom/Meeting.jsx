@@ -359,34 +359,12 @@ const Meeting = () => {
                         setIsWebRtcReady(true);
                         return; // Successfully connected to LiveKit!
                     } catch (lkErr) {
-                        console.error("LiveKit connection attempt failed, falling back to compatibility mode:", lkErr);
+                        console.error("LiveKit connection attempt failed:", lkErr);
+                        toast.error("Failed to connect to LiveKit SFU server.");
                     }
+                } else {
+                    toast.error("No LiveKit URL or token provided.");
                 }
-
-                // Fallback / Compatibility mode (if lk connection failed or no token/url)
-                toast.success("Connected to meeting room (compatibility mode)", {
-                    duration: 3000
-                });
-                try {
-                    const constraints = {
-                        video: initialVideo ? { width: 1280, height: 720 } : false,
-                        audio: initialMic
-                    };
-                    const fallbackStream = await navigator.mediaDevices.getUserMedia(constraints);
-                    localStreamRef.current = fallbackStream;
-                    if (localVideoRef.current) {
-                        localVideoRef.current.srcObject = fallbackStream;
-                    }
-                    if (selfMonitorRef.current && initialMic) {
-                        const localAudioStream = new MediaStream();
-                        fallbackStream.getAudioTracks().forEach(track => localAudioStream.addTrack(track));
-                        selfMonitorRef.current.srcObject = localAudioStream;
-                        selfMonitorRef.current.play().catch(e => console.log("Self monitor play blocked:", e));
-                    }
-                } catch (mediaErr) {
-                    console.warn("Failed to get fallback local user media:", mediaErr);
-                }
-
             } catch (err) {
                 console.error("Critical failure during connectRoom:", err);
                 toast.error("Failed to join meeting room.");
@@ -737,28 +715,6 @@ const Meeting = () => {
                     localVideoRef.current.srcObject = localStream;
                 }
             }, 200);
-        } else {
-            if (localStreamRef.current) {
-                localStreamRef.current.getVideoTracks().forEach(t => t.enabled = newVideoState);
-            }
-            if (newVideoState && (!localStreamRef.current || localStreamRef.current.getVideoTracks().length === 0)) {
-                try {
-                    const freshStream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
-                    const videoTrack = freshStream.getVideoTracks()[0];
-                    if (videoTrack) {
-                        if (!localStreamRef.current) {
-                            localStreamRef.current = new MediaStream();
-                        }
-                        localStreamRef.current.addTrack(videoTrack);
-                        if (localVideoRef.current) {
-                            localVideoRef.current.srcObject = null;
-                            localVideoRef.current.srcObject = localStreamRef.current;
-                        }
-                    }
-                } catch (err) {
-                    console.warn("Failed to re-acquire camera track in fallback:", err);
-                }
-            }
         }
         updateParticipantState(isMicOn, newVideoState, isHandRaised);
     };

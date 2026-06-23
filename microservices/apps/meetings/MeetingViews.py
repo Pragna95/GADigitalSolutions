@@ -494,8 +494,8 @@ class UpdateParticipantStateView(APIView):
         meeting = get_meeting_by_identifier(meeting_identifier)
 
         # Use the real UUID when available, otherwise the raw identifier string.
+        # Use the real UUID when available, otherwise the raw identifier string.
         meeting_key = str(meeting.id) if meeting else meeting_identifier
-        group_name  = f"meeting_{meeting_key}"
 
         # Persist participant state to DB only when meeting exists
         state = None
@@ -543,34 +543,32 @@ class UpdateParticipantStateView(APIView):
         channel_layer = get_channel_layer()
 
         # 1. Broadcast individual state_changed so other participants update their UI
-        for target_group in [group_name, f"participants_{meeting_key}"]:
-            async_to_sync(channel_layer.group_send)(
-                target_group,
-                {
-                    "type": "participant_update",
-                    "data": {
-                        "event": "state_changed",
-                        "user_id": user_identifier,
-                        "username": state.username if state else username,
-                        "mic_on": state.mic_on if state else request.data.get("mic_on"),
-                        "video_on": state.video_on if state else request.data.get("video_on"),
-                        "hand_raised": bool(request.data.get("hand_raised"))
-                    }
+        async_to_sync(channel_layer.group_send)(
+            f"participants_{meeting_key}",
+            {
+                "type": "participant_update",
+                "data": {
+                    "event": "state_changed",
+                    "user_id": user_identifier,
+                    "username": state.username if state else username,
+                    "mic_on": state.mic_on if state else request.data.get("mic_on"),
+                    "video_on": state.video_on if state else request.data.get("video_on"),
+                    "hand_raised": bool(request.data.get("hand_raised"))
                 }
-            )
+            }
+        )
 
         # 2. Broadcast global hand-raise count so all tabs sync in real time
-        for target_group in [group_name, f"participants_{meeting_key}"]:
-            async_to_sync(channel_layer.group_send)(
-                target_group,
-                {
-                    "type": "count_update",
-                    "data": {
-                        "event": "countUpdate",
-                        "count": hand_raise_count
-                    }
+        async_to_sync(channel_layer.group_send)(
+            f"participants_{meeting_key}",
+            {
+                "type": "count_update",
+                "data": {
+                    "event": "countUpdate",
+                    "count": hand_raise_count
                 }
-            )
+            }
+        )
 
         return Response({
             "message": "updated",

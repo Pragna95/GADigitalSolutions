@@ -186,21 +186,20 @@ def toggle_mic(request):
         _save_state(meeting_uuid, user_id, state)
 
         channel_layer = get_channel_layer()
-        for target_group in [f"meeting_{meeting_uuid}", f"participants_{meeting_uuid}"]:
-            async_to_sync(channel_layer.group_send)(
-                target_group,
-                {
-                    "type": "participant_update",
-                    "data": {
-                        "event": "state_changed",
-                        "user_id": user_id,
-                        "username": state["username"],
-                        "mic_on": state["mic_on"],
-                        "video_on": state["video_on"],
-                        "hand_raised": state["hand_raised"],
-                    }
+        async_to_sync(channel_layer.group_send)(
+            f"participants_{meeting_uuid}",
+            {
+                "type": "participant_update",
+                "data": {
+                    "event": "state_changed",
+                    "user_id": user_id,
+                    "username": state["username"],
+                    "mic_on": state["mic_on"],
+                    "video_on": state["video_on"],
+                    "hand_raised": state["hand_raised"],
                 }
-            )
+            }
+        )
 
         return JsonResponse({"message": "Mic state updated", "mic_on": state["mic_on"]})
     return JsonResponse({"error": "Only POST allowed"}, status=400)
@@ -386,22 +385,21 @@ def update_participant(request):
 
         channel_layer = get_channel_layer()
 
-        # Broadcast to audio/WebRTC group (existing behavior) and participants group
-        for target_group in [f"meeting_{meeting_uuid}", f"participants_{meeting_uuid}"]:
-            async_to_sync(channel_layer.group_send)(
-                target_group,
-                {
-                    "type": "participant_update",
-                    "data": {
-                        "event": "state_changed",
-                        "user_id": user_id,
-                        "username": state["username"],
-                        "mic_on": state["mic_on"],
-                        "video_on": state["video_on"],
-                        "hand_raised": state["hand_raised"],
-                    }
+        # Broadcast to participants group
+        async_to_sync(channel_layer.group_send)(
+            f"participants_{meeting_uuid}",
+            {
+                "type": "participant_update",
+                "data": {
+                    "event": "state_changed",
+                    "user_id": user_id,
+                    "username": state["username"],
+                    "mic_on": state["mic_on"],
+                    "video_on": state["video_on"],
+                    "hand_raised": state["hand_raised"],
                 }
-            )
+            }
+        )
 
         return JsonResponse({
             "message": "Participant updated",

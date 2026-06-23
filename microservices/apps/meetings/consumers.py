@@ -195,10 +195,6 @@ class ParticipantConsumer(AsyncJsonWebsocketConsumer):
             "type": "participant_list",
             "participants": list(participants.values())
         })
-
-    async def signal_message(self, event):
-        await self.send_json(event["message"])
-
     async def participant_update(self, event):
         await self.send_json(event["data"])
 
