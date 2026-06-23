@@ -70,29 +70,24 @@ import urllib.parse as urlparse
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 database_url = os.getenv("DATABASE_URL")
-if database_url:
-    url = urlparse.urlparse(database_url)
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': url.path[1:],
-            'USER': url.username,
-            'PASSWORD': url.password,
-            'HOST': url.hostname,
-            'PORT': url.port or 5432,
-        }
+if not database_url:
+    raise ValueError("DATABASE_URL environment variable is required. Supabase connection must be configured.")
+
+url = urlparse.urlparse(database_url)
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': url.path[1:],
+        'USER': url.username,
+        'PASSWORD': url.password,
+        'HOST': url.hostname,
+        'PORT': url.port or 5432,
     }
-    query = urlparse.parse_qs(url.query)
-    if 'sslmode' in query:
-        DATABASES['default']['OPTIONS'] = {
-            'sslmode': query['sslmode'][0]
-        }
-else:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
-        }
+}
+query = urlparse.parse_qs(url.query)
+if 'sslmode' in query:
+    DATABASES['default']['OPTIONS'] = {
+        'sslmode': query['sslmode'][0]
     }
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 
@@ -150,13 +145,21 @@ REST_FRAMEWORK = {
 }
 
 
-# Realtime Channels
-# Realtime Channels
+# Realtime Channels & Cache (Strictly Redis / Memurai)
+redis_url = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/1")
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": redis_url,
+    }
+}
+
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [("127.0.0.1", 6379)],
+            "hosts": [redis_url],
         },
     },
 }
@@ -196,12 +199,7 @@ AUTHENTICATION_BACKENDS = [
     'apps.meetings.auth_backends.EmailOrUsernameModelBackend',
 ]
 
-CACHES = {
-    "default": {
-        "BACKEND": "backend.cache.FallbackRedisCache",
-        "LOCATION": "redis://127.0.0.1:6379/1",
-    }
-}
+# CACHES is defined dynamically above alongside CHANNEL_LAYERS
 
 # LiveKit Server Settings
 LIVEKIT_URL = os.getenv("LIVEKIT_URL", "http://localhost:7880")

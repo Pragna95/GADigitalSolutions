@@ -7,10 +7,8 @@ const Sidebar = ({
     showMenuPage, setShowMenuPage,
     setShowParticipantsGrid,
     handRaiseMembers = [], participantMembers = [],
-    liveParticipants = [], userId, participantName
+    liveParticipants = [], userId, participantName,
     meetingId,
-    userId,
-    participantName
 }) => {
     const [activeMenu, setActiveMenu] = useState("chat");
     const [message, setMessage] = useState("");
