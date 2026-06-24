@@ -44,7 +44,7 @@ class ParticipantConsumer(AsyncJsonWebsocketConsumer):
         try:
             participants_key = f"participants_{self.meeting_uuid}"
             participants = cache.get(participants_key) or {}
-            participants.pop(self.channel_name, None)
+            participants.pop(self.participant_user_id, None)
             cache.set(participants_key, participants, timeout=None)
 
             # ✅ Hand raise cache tempt చేయాలి — left అయిన participant raise చేస్తే తీసేయాలి
@@ -106,8 +106,9 @@ class ParticipantConsumer(AsyncJsonWebsocketConsumer):
             participants = cache.get(participants_key) or {}
 
             print("CACHE BEFORE:", participants)
-            participants[self.channel_name] = {
-                "id": self.channel_name,
+            participants[user_id] = {
+                "id": user_id,
+                "channel_name": self.channel_name,
                 "name": name,
                 "user_id": user_id,
             }
