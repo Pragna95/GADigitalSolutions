@@ -11,7 +11,7 @@ API Key-based authentication is used to authenticate client applications communi
 ```text
 GADigitalSolutions
 ├── app1/
-│   ├── backend1/        # Django App running on Port 8001
+│   ├── backend1/        # Django App running on Port 5000
 │   └── frontend1/       # React (Vite) App running on Port 3000
 ├── app2/
 │   ├── backend2/        # Django App running on Port 8002
@@ -50,10 +50,10 @@ cd microservices
 .\venv\Scripts\python.exe manage.py runserver 8000
 ```
 
-### Terminal 2: App 1 Backend (Port 8001)
+### Terminal 2: App 1 Backend (Port 5000)
 ```bash
 cd app1/backend1
-python manage.py runserver 8001
+python manage.py runserver 5000
 ```
 
 ### Terminal 3: App 2 Backend (Port 8002)

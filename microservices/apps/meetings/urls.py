@@ -41,4 +41,6 @@ urlpatterns = [
     path("meetings/participant/fbv/<uuid:meeting_id>/<uuid:user_id>/", views.get_participant, name='api_fbv_get_participant'),
     path("meetings/participant/fbv/update/", views.update_participant, name='api_fbv_update_participant'),
     path("meetings/participants/<uuid:meeting_id>/", views.get_all_participants, name='api_get_all_participants'),
+
+    path('api/livekit-token/<uuid:room_uuid>/', views.livekit_token, name='api_livekit_token'),
 ]

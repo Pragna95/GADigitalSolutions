@@ -65,14 +65,14 @@ services:
     env_file:
       - .env
     ports:
-      - "8002:8002"
+      - "5000:5000"
     depends_on:
       postgres-db:
         condition: service_healthy
     command: >
       sh -c "
       python manage.py migrate &&
-      python manage.py runserver 0.0.0.0:8002
+      python manage.py runserver 0.0.0.0:5000
       "
 
   # ----------------------------------------------------

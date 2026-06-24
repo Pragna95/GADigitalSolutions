@@ -10,8 +10,43 @@ from django.contrib.auth.forms import UserCreationForm
 from django.urls import reverse_lazy
 from django.views.generic import CreateView
 from .models import *
-
+import time
+import jwt
+from django.http import JsonResponse
 from django.conf import settings
+from django.contrib.auth.decorators import login_required
+
+@login_required
+def livekit_token(request, room_uuid):
+    api_key = getattr(settings, "LIVEKIT_API_KEY", "devkey")
+    api_secret = getattr(settings, "LIVEKIT_API_SECRET", "secret")
+    
+    now = int(time.time())
+    video_grants = {
+        "roomJoin": True,
+        "room": str(room_uuid),
+        "canPublish": True,
+        "canSubscribe": True,
+        "canPublishData": True,
+    }
+    
+    payload = {
+        "exp": now + 86400,  # 24 hours
+        "iss": api_key,
+        "sub": str(request.user.id),
+        "nbf": now - 60,
+        "video": video_grants,
+        "name": request.user.username,
+    }
+    
+    token = jwt.encode(payload, api_secret, algorithm="HS256")
+    if isinstance(token, bytes):
+        token = token.decode("utf-8")
+    
+    return JsonResponse({
+        "token": token,
+        "url": getattr(settings, "LIVEKIT_URL", "http://localhost:7880")
+    })
 
 class CustomLoginView(LoginView):
     template_name = 'auth/login.html'
