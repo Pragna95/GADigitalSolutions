@@ -590,7 +590,10 @@ const MeetingRoom = () => {
                     handRaiseMembers={handRaiseMembers}
                     participantMembers={participantMembers}
                     setShowParticipantsGridDirect={setShowParticipantsGrid}
-                    
+                    liveParticipants={liveParticipants}
+                    userId={userId}
+                    participantName={participantName}
+                    meetingId={meetingId}
                 />
             </main>
 

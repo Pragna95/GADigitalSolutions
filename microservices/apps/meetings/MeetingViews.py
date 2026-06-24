@@ -236,6 +236,13 @@ class ScheduleMeetingView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        end_datetime_str = request.data.get("end_datetime")
+        if end_datetime_str:
+            scheduled_end_dt = parse_datetime(end_datetime_str)
+        else:
+            import datetime
+            scheduled_end_dt = scheduled_dt + datetime.timedelta(hours=1) if scheduled_dt else None
+
         # Get or Create Host User
         user, created = User.objects.get_or_create(
             product=product,
@@ -259,6 +266,7 @@ class ScheduleMeetingView(APIView):
     meeting_code=meeting_code,
     status="scheduled",
     scheduled_start=scheduled_dt,
+    scheduled_end=scheduled_end_dt,
     timezone="Asia/Kolkata"
 )  
         signer = Signer()
@@ -319,6 +327,11 @@ Meeting Team
         recipient_list=participant_emails,
         fail_silently=False,)
             
+        from django.core.cache import cache
+        cache.delete(f"dashboard_meetings:{email.lower()}")
+        for participant_email in participant_emails:
+            cache.delete(f"dashboard_meetings:{participant_email.lower()}")
+
         return Response(
             {
                  "message": "Meeting scheduled successfully",
@@ -336,19 +349,41 @@ class ListMeetingsView(APIView):
 
     def get(self, request):
         from django.db.models import Q
-        email = request.query_params.get("email")
-        if email:
-            meetings = Meeting.objects.filter(
-                Q(created_by_user__email__iexact=email) |
-                Q(participants__user__email__iexact=email)
-            ).distinct().order_by('scheduled_start')
-        else:
-            meetings = Meeting.objects.all().order_by('scheduled_start')
+        from django.core.cache import cache
+        
+        email = None
+        if request.user and request.user.is_authenticated:
+            email = request.user.email
+            
+        if not email:
+            email = request.query_params.get("email")
+            
+        if not email:
+            return Response([], status=status.HTTP_200_OK)
+            
+        # Check cache
+        cache_key = f"dashboard_meetings:{email.lower()}"
+        cached_data = cache.get(cache_key)
+        if cached_data is not None:
+            return Response(cached_data, status=status.HTTP_200_OK)
+
+        meetings = Meeting.objects.filter(
+            Q(created_by_user__email__iexact=email) |
+            Q(participants__user__email__iexact=email)
+        ).distinct().order_by('scheduled_start')
+        
         data = []
         signer = Signer()
         raw_api_key = request.headers.get("X-Api-Key")
+        now_time = timezone.now()
         for meeting in meetings:
-            # Check ongoing state: active session exists with > 0 participants
+            # Check if status should be updated to ongoing (Bug 3)
+            if meeting.status == 'scheduled' and meeting.scheduled_start and meeting.scheduled_end:
+                if meeting.scheduled_start <= now_time <= meeting.scheduled_end:
+                    meeting.status = 'ongoing'
+                    meeting.save()
+            
+            # Check ongoing state: active session exists with > 0 participants, or status is ongoing
             active_session = meeting.sessions.filter(status='active').first()
             is_ongoing = False
             active_participants_count = 0
@@ -357,13 +392,16 @@ class ListMeetingsView(APIView):
                 if active_participants_count > 0:
                     is_ongoing = True
 
+            if meeting.status == 'ongoing':
+                is_ongoing = True
+
             # Check completed state: ended session exists and not currently ongoing, or scheduled_start is in the past
             has_ended_session = meeting.sessions.filter(status='ended').exists()
             is_completed = False
             if not is_ongoing:
-                if has_ended_session:
+                if has_ended_session or meeting.status == 'completed':
                     is_completed = True
-                elif meeting.scheduled_start and meeting.scheduled_start < timezone.now():
+                elif meeting.scheduled_start and meeting.scheduled_start < now_time:
                     is_completed = True
 
             participants = []
@@ -389,15 +427,28 @@ class ListMeetingsView(APIView):
                 'created_by_email': meeting.created_by_user.email,
             })
 
+        cache.set(cache_key, data, timeout=60)
         return Response(data, status=status.HTTP_200_OK)
 
     def delete(self, request):
+        from django.core.cache import cache
         meeting_ids = request.data.get("meeting_ids") or request.query_params.get("meeting_ids")
         if meeting_ids:
             if isinstance(meeting_ids, str):
                 meeting_ids = [mid.strip() for mid in meeting_ids.split(",") if mid.strip()]
             try:
+                meetings_to_delete = Meeting.objects.filter(id__in=meeting_ids)
+                emails_to_clear = set()
+                for m in meetings_to_delete:
+                    emails_to_clear.add(m.created_by_user.email.lower())
+                    for p in getattr(m, 'participants', []).all() if hasattr(m, 'participants') else []:
+                        if p.user:
+                            emails_to_clear.add(p.user.email.lower())
+                            
                 deleted_count, _ = Meeting.objects.filter(id__in=meeting_ids).delete()
+                for e in emails_to_clear:
+                    cache.delete(f"dashboard_meetings:{e}")
+                    
                 return Response(
                     {"message": f"{deleted_count} meetings deleted successfully"},
                     status=status.HTTP_200_OK
@@ -416,7 +467,15 @@ class ListMeetingsView(APIView):
             )
         try:
             meeting = Meeting.objects.get(id=meeting_id)
+            emails_to_clear = {meeting.created_by_user.email.lower()}
+            for p in getattr(meeting, 'participants', []).all() if hasattr(meeting, 'participants') else []:
+                if p.user:
+                    emails_to_clear.add(p.user.email.lower())
+                    
             meeting.delete()
+            for e in emails_to_clear:
+                cache.delete(f"dashboard_meetings:{e}")
+                
             return Response(
                 {"message": "Meeting deleted successfully"},
                 status=status.HTTP_200_OK

@@ -246,6 +246,7 @@ export default function AdvanceSchedule({
             const participant_emails = attendeesList.map((a) => a.email);
             const dateStr = startDate ? format(startDate, "yyyy-MM-dd") : "";
             const datetime = `${dateStr}T${startTime}`;
+            const endDatetime = `${dateStr}T${endTime}`;
 
             let response;
             let data;
@@ -256,6 +257,7 @@ export default function AdvanceSchedule({
                     title,
                     description,
                     datetime,
+                    end_datetime: endDatetime,
                     participant_emails,
                 }, {
                     headers: {

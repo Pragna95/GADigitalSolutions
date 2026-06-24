@@ -207,8 +207,13 @@ class ParticipantConsumer(AsyncJsonWebsocketConsumer):
 
 @sync_to_async
 def save_chat_message(meeting_id, user_id, message):
-    meeting = Meeting.objects.get(meeting_code=meeting_id)
-    user = User.objects.get(id=user_id)
+    from .MeetingViews import get_meeting_by_identifier, get_user_by_identifier
+    meeting = get_meeting_by_identifier(meeting_id)
+    if not meeting:
+        raise ValueError(f"Meeting not found for identifier: {meeting_id}")
+    user = get_user_by_identifier(meeting.product, user_id)
+    if not user:
+        raise ValueError(f"User not found for identifier: {user_id}")
     return ChatMessage.objects.create(meeting=meeting, user=user, message=message)
 
 

@@ -27,6 +27,8 @@ const VideoStage = ({
     // 1. LIVE SYNCHRONIZED PARTICIPANTS
     // ==========================================
     const activeParticipants = useMemo(() => {
+        const seenUserIds = new Set();
+        const seenIds = new Set();
         const list = [];
 
         // Always add You first
@@ -37,15 +39,26 @@ const VideoStage = ({
             stream: null,
             micOn: isMicOn,
         });
+        seenUserIds.add(userId);
+        seenIds.add("local-user");
 
         // Add Remote Users from the server-authoritative liveParticipants list
         const remoteParticipants = liveParticipants.filter(p => p.user_id !== userId);
 
         remoteParticipants.forEach((p) => {
+            const cleanId = p.id || `remote-${p.user_id}`;
+            const cleanUserId = p.user_id;
+
+            if (seenUserIds.has(cleanUserId) || seenIds.has(cleanId)) {
+                return;
+            }
+            seenUserIds.add(cleanUserId);
+            seenIds.add(cleanId);
+
             const rStream = remoteStreams.find(r => roomPeers[r.peerId]?.user_id === p.user_id);
             const cleanName = p.name ? p.name.replace(/_[a-zA-Z0-9]{5}$/, "") : "Remote User";
             list.push({
-                id: p.id || `remote-${p.user_id}`,
+                id: cleanId,
                 name: cleanName,
                 isLocal: false,
                 stream: rStream ? rStream.stream : null,
@@ -64,7 +77,7 @@ const VideoStage = ({
     const PAGE_SIZE = 9;
 
     const totalPages = Math.max(1, Math.ceil(activeParticipants.length / PAGE_SIZE));
-    const clampedPage = Math.min(currentPage, totalPages - 1);
+    const clampedPage = Math.max(0, Math.min(currentPage, totalPages - 1));
     const startIndex = clampedPage * PAGE_SIZE;
     const endIndex = startIndex + PAGE_SIZE;
     const pagedParticipants = activeParticipants.slice(startIndex, endIndex);
@@ -73,7 +86,7 @@ const VideoStage = ({
     const canGoRight = clampedPage < totalPages - 1;
 
     useEffect(() => {
-        setCurrentPage((prev) => Math.min(prev, totalPages - 1));
+        setCurrentPage((prev) => Math.max(0, Math.min(prev, totalPages - 1)));
     }, [totalPages]);
 
     const getParticipantInitials = (name) => {
