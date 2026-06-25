@@ -40,33 +40,31 @@ export default function TranscriptModal({ closeTranscript }) {
   // 🔥 AUTO SCROLL TO BOTTOM WHENEVER TRANSCRIPTS CHANGE
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: "smooth",
-      });
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [transcripts]);
-
+  }, []);
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      
+
       {/* MODAL */}
-      <div
-        className="
-          bg-white
-          w-full
-          max-w-[650px]
-          h-[714px]
-          max-h-[90vh]
-          rounded-[12px]
-          border border-blue-500
-          pt-[21px] pr-[16px] pb-[21px] pl-[16px]
-          flex flex-col
-          gap-[10px]
-          shadow-2xl
-          overflow-hidden
-        "
-      >
+    <div
+className="
+bg-white
+w-full
+max-w-[650px]
+max-h-[90vh]
+rounded-[12px]
+border border-blue-500
+pt-[21px]
+pr-[16px]
+pb-[21px]
+pl-[16px]
+flex flex-col
+gap-[10px]
+shadow-2xl
+overflow-hidden
+"
+>
 
         {/* HEADER */}
         <div className="flex items-center mb-4">
@@ -105,7 +103,6 @@ export default function TranscriptModal({ closeTranscript }) {
             overflow-y-auto
             space-y-10
             pr-2
-            -mt-4
             hide-scrollbar
           "
         >

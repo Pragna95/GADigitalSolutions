@@ -7,6 +7,8 @@ import MiniCalendar from "../calender/MiniCalender";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import { Search, Filter, Check, Trash2 } from "lucide-react";
+import TranscriptModal from "@/components/chat/TranscriptModal";
+import AISummaryCard from "@/components/chat/AISummaryCard";
 import {
   Dialog,
   DialogContent,
@@ -38,7 +40,8 @@ export default function HuddlePage() {
   const [ongoingFilter, setOngoingFilter] = useState("All"); // "All", "Instant", "Scheduled"
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [selectedMeetings, setSelectedMeetings] = useState(new Set());
-
+  const [showTranscript, setShowTranscript] = useState(false);
+const [showSummary, setShowSummary] = useState(false);
   const handleToggleSelect = (meetingId) => {
     setSelectedMeetings((prev) => {
       const next = new Set(prev);
@@ -227,14 +230,14 @@ export default function HuddlePage() {
     .filter(m => {
       const userEmail = localStorage.getItem("email");
       const cutoff = sessionStorage.getItem("instant_meeting_cutoff");
-      
+
       const isInstant = m.title === "Instant Huddle";
       const isNewInstant = isInstant && (!cutoff || (m.created_at && new Date(m.created_at) >= new Date(cutoff)));
-      
+
       const isInstantOngoing = isInstant &&
-                               isNewInstant &&
-                               !m.is_completed &&
-                               m.created_by_email?.toLowerCase() === userEmail?.toLowerCase();
+        isNewInstant &&
+        !m.is_completed &&
+        m.created_by_email?.toLowerCase() === userEmail?.toLowerCase();
       const isScheduledOngoing = m.title !== "Instant Huddle" && m.is_ongoing;
       return isInstantOngoing || isScheduledOngoing;
     })
@@ -266,7 +269,7 @@ export default function HuddlePage() {
 
   const placeholders = sessionsList.filter((s) => s.status === activeTab);
   const dbItems = activeTab === "Ongoing" ? ongoingDbSessions : (activeTab === "Completed" ? completedDbSessions : []);
-  
+
   let filteredSessions = [...dbItems, ...placeholders];
   if (activeTab === "Ongoing") {
     if (ongoingFilter === "Instant") {
@@ -345,17 +348,16 @@ export default function HuddlePage() {
               </button>
             ))}
           </div>
-          
+
           {activeTab === "Ongoing" && (
             <div className="flex items-center gap-2">
               <button
                 onClick={handleDeleteSelected}
                 disabled={selectedMeetings.size === 0}
-                className={`flex items-center justify-center h-9 w-9 rounded-xl border transition-all shadow-sm active:scale-95 cursor-pointer ${
-                  selectedMeetings.size > 0
+                className={`flex items-center justify-center h-9 w-9 rounded-xl border transition-all shadow-sm active:scale-95 cursor-pointer ${selectedMeetings.size > 0
                     ? "bg-red-50 text-red-600 border-red-200 hover:bg-red-100 hover:border-red-300 hover:scale-105"
                     : "bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed opacity-50"
-                }`}
+                  }`}
                 title="Delete Selected Instant Meetings"
               >
                 <Trash2 className="size-4 text-red-500" />
@@ -413,13 +415,15 @@ export default function HuddlePage() {
           {activeTab === "Scheduled" ? (
             <ScheduledMeetings refreshTrigger={refreshTrigger} />
           ) : filteredSessions.length > 0 ? (
-            <div className="flex flex-col gap-4 max-h-[450px] overflow-y-auto pr-2 no-scrollbar">
+            <div className="flex flex-col gap-4 pr-2 no-scrollbar">
               {filteredSessions.map((s) => {
                 const isInstant = s.title === "Instant Huddle" || s.title === "Instant Meeting";
                 return (
                   <SessionCard
                     key={s.id}
                     session={s}
+                    onOpenTranscript={() => setShowTranscript(true)}
+                    onOpenSummary={() => setShowSummary(true)}
                     onRefresh={() => setRefreshTrigger((prev) => prev + 1)}
                     isSelected={selectedMeetings.has(s.id)}
                     onToggleSelect={isInstant && activeTab !== "Completed" ? () => handleToggleSelect(s.id) : undefined}
@@ -596,6 +600,17 @@ export default function HuddlePage() {
           </div>
         </DialogContent>
       </Dialog>
+      {/* Transcript Modal */}
+      {showTranscript && (
+        <TranscriptModal
+          closeTranscript={() => setShowTranscript(false)}
+        />
+      )}
+      {showSummary && (
+  <AISummaryCard
+    closeCard={() => setShowSummary(false)}
+  />
+)}
     </div>
   );
 }

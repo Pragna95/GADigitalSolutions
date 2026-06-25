@@ -18,9 +18,9 @@ function handleTranscript(session) {
     });
 }
 
-export default function SessionCard({ session, onRefresh, isSelected, onToggleSelect }) {
-  const [showSummary, setShowSummary] = useState(false);
-  const [showTranscript, setShowTranscript] = useState(false);
+export default function SessionCard({ session, onRefresh, isSelected, onToggleSelect, onOpenTranscript,onOpenSummary }) {
+  
+
   const navigate = useNavigate();
 
   return (
@@ -164,7 +164,7 @@ export default function SessionCard({ session, onRefresh, isSelected, onToggleSe
                             "
             >
               <button
-                onClick={() => setShowSummary(true)}
+                onClick={() => onOpenSummary(session)}
                 className="
     h-[36px]
     min-w-[110px]
@@ -188,15 +188,11 @@ export default function SessionCard({ session, onRefresh, isSelected, onToggleSe
               </button>
             </div>
 
-            {showSummary && (
-              <AISummaryCard
-                closeCard={() => setShowSummary(false)}
-              />
-            )}
+           
 
             {/* VIEW TRANSCRIPT */}
             <button
-              onClick={() => setShowTranscript(true)}
+              onClick={() => onOpenTranscript(session)}
               className="
     shadow-[0_4px_12px_rgba(0,34,102,0.08)]
     h-[36px]
@@ -225,15 +221,7 @@ export default function SessionCard({ session, onRefresh, isSelected, onToggleSe
             >
               View Transcript
             </button>
-
-            {showTranscript && (
-              <TranscriptModal
-                closeTranscript={() =>
-                  setShowTranscript(false)
-                }
-              />
-            )}
-
+      
             {/* VIEW RECORDING */}
             <button
               className="
