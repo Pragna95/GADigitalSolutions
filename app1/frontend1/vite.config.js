@@ -17,6 +17,7 @@ export default defineConfig({
   server: {
     port: 3000,
     host: true,
+    allowedHosts:['annex-anthology-entangled.ngrok-free.dev'],
     proxy: {
       '/api/meeting': {
         target: 'http://localhost:8000',
@@ -26,3 +27,4 @@ export default defineConfig({
     }
   },
 });
+
