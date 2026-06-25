@@ -84,6 +84,13 @@ const Sidebar = ({
             })
         );
     }
+    setChatMessages((prev) => [
+    ...prev,
+    {
+        sender: participantName,
+        text: message
+    }
+]);
 
     setMessage("");
     };
