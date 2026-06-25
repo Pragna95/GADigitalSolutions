@@ -25,7 +25,7 @@ urlpatterns = [
     path('meetings/webhook/', meeting_views.LiveKitWebhookView.as_view(), name='api_livekit_webhook'),
     
     # --- Real-Time Messaging (from MeetingViews.py) ---
-    path("chat/<uuid:meeting_id>/", meeting_views.ChatMessageView.as_view(), name='api_chat'),
+    path("chat/<str:meeting_id>/", meeting_views.ChatMessageView.as_view(), name='api_chat'),
 
     # --- Participant State Class-Based Views (from MeetingViews.py) ---
     path("meetings/participant/<uuid:meeting_id>/<uuid:user_id>/", meeting_views.ParticipantStateView.as_view(), name='api_cbv_get_participant'),

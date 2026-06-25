@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useRef  } from "react";
 import { Search, X, SendHorizontal } from "lucide-react";
 
+const apiBaseUrl = import.meta.env.VITE_MICROSERVICE_URL || "http://localhost:8000";
+const wsBaseUrl = import.meta.env.VITE_WS_URL || 
+    (import.meta.env.VITE_MICROSERVICE_URL ? 
+        import.meta.env.VITE_MICROSERVICE_URL.replace(/^http/, "ws") : 
+        "ws://localhost:8000");
+
 const Sidebar = ({
     showHandRaise, setShowHandRaise,
     showParticipants, setShowParticipants,
@@ -13,10 +19,7 @@ const Sidebar = ({
     const [activeMenu, setActiveMenu] = useState("chat");
     const [message, setMessage] = useState("");
     const [transcriptionEnabled, setTranscriptionEnabled] = useState(true);
-    const [chatMessages, setChatMessages] = useState([
-        { sender: "Rahul", text: "Can we start the demo?" },
-        { sender: "Anika", text: "Sharing the screen now." },
-    ]);
+    const [chatMessages, setChatMessages] = useState([]);
     const [showAll, setShowAll] = useState(false);
 
     const displayParticipants = React.useMemo(() => {
@@ -36,63 +39,83 @@ const Sidebar = ({
 
     const visibleParticipants = showAll ? displayParticipants : displayParticipants.slice(0, 8);
     const chatSocketRef = useRef(null);
+
+    // Fetch chat history
     useEffect(() => {
-    if (!meetingId) return;
+        if (!meetingId) return;
 
-    const socket = new WebSocket(
-        `ws://127.0.0.1:8000/ws/chat/${meetingId}/`
-    );
-
-    chatSocketRef.current = socket;
-
-    socket.onopen = () => {
-        console.log("Chat Connected");
-    };
-
-    socket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-
-        setChatMessages((prev) => [
-            ...prev,
-            {
-                sender: data.sender || "Unknown",
-                text: data.message
+        const loadChatHistory = async () => {
+            try {
+                const response = await fetch(`${apiBaseUrl}/api/chat/${meetingId}/`);
+                if (response.ok) {
+                    const data = await response.json();
+                    const formatted = data.map((msg) => ({
+                        sender: msg.user,
+                        text: msg.message,
+                        user_id: msg.user_id,
+                    }));
+                    setChatMessages(formatted);
+                }
+            } catch (err) {
+                console.error("Failed to load chat history:", err);
             }
-        ]);
-    };
+        };
 
-    socket.onclose = () => {
-        console.log("Chat Closed");
-    };
-
-    return () => {
-        socket.close();
-    };
+        loadChatHistory();
     }, [meetingId]);
+
+    // WebSocket connection
+    useEffect(() => {
+        if (!meetingId) return;
+
+        const wsUrl = `${wsBaseUrl}/ws/chat/${meetingId}/`;
+        const socket = new WebSocket(wsUrl);
+        chatSocketRef.current = socket;
+
+        socket.onopen = () => {
+            console.log("Chat Connected to", wsUrl);
+        };
+
+        socket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+
+            setChatMessages((prev) => [
+                ...prev,
+                {
+                    sender: data.sender || "Unknown",
+                    text: data.message,
+                    user_id: data.user_id
+                }
+            ]);
+        };
+
+        socket.onclose = () => {
+            console.log("Chat Closed");
+        };
+
+        return () => {
+            socket.close();
+        };
+    }, [meetingId]);
+
     const handleSendMessage = () => {
-    if (message.trim() === "") return;
+        if (message.trim() === "") return;
 
-    if (
-        chatSocketRef.current &&
-        chatSocketRef.current.readyState === WebSocket.OPEN
-    ) {
-        chatSocketRef.current.send(
-            JSON.stringify({
-                user_id: userId,
-                sender: participantName,
-                message: message
-            })
-        );
-    }
-    setChatMessages((prev) => [
-    ...prev,
-    {
-        sender: participantName,
-        text: message
-    }
-]);
-
-    setMessage("");
+        if (
+            chatSocketRef.current &&
+            chatSocketRef.current.readyState === WebSocket.OPEN
+        ) {
+            chatSocketRef.current.send(
+                JSON.stringify({
+                    user_id: userId,
+                    sender: participantName,
+                    message: message
+                })
+            );
+            setMessage("");
+        } else {
+            console.warn("WebSocket is not open");
+        }
     };
 
     if (!showHandRaise && !showParticipants && !showMenuPage) return null;
@@ -206,14 +229,17 @@ const Sidebar = ({
                         {activeMenu === "chat" && (
                             <div className="flex flex-col h-full">
                                 <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-                                    {chatMessages.map((msg, i) => (
-                                        <div key={i} className={`flex ${msg.sender === "You" ? "justify-end" : "justify-start"}`}>
-                                            <div className={`max-w-[85%] px-4 py-2.5 rounded-2xl ${msg.sender === "You" ? "bg-[#0f2a78] text-white rounded-tr-none" : "bg-slate-100 text-slate-700 rounded-tl-none"}`}>
-                                                <p className="text-[10px] font-bold mb-0.5 opacity-80">{msg.sender}</p>
-                                                <p className="text-sm">{msg.text}</p>
+                                    {chatMessages.map((msg, i) => {
+                                        const isSelf = msg.user_id === userId || msg.sender === "You" || msg.sender === participantName;
+                                        return (
+                                            <div key={i} className={`flex ${isSelf ? "justify-end" : "justify-start"}`}>
+                                                <div className={`max-w-[85%] px-4 py-2.5 rounded-2xl ${isSelf ? "bg-[#0f2a78] text-white rounded-tr-none" : "bg-slate-100 text-slate-700 rounded-tl-none"}`}>
+                                                    <p className="text-[10px] font-bold mb-0.5 opacity-80">{isSelf ? "You" : msg.sender}</p>
+                                                    <p className="text-sm">{msg.text}</p>
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                                 <div className="mt-4 flex items-center gap-2">
                                     <input type="text" value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Type a message..." className="flex-1 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none" />

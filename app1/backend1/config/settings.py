@@ -6,7 +6,7 @@ from corsheaders.defaults import default_headers
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-load_dotenv(BASE_DIR / '.env')
+load_dotenv(BASE_DIR / '.env', override=True)
 
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "x-api-key",
@@ -79,7 +79,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': url.path[1:],
         'USER': url.username,
-        'PASSWORD': 'db2312',
+        'PASSWORD': url.password,
         'HOST': url.hostname,
         'PORT': url.port or 5432,
     }

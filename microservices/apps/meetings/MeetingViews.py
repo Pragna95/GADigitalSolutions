@@ -873,8 +873,12 @@ class ChatMessageView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, meeting_id):
+        meeting = get_meeting_by_identifier(meeting_id)
+        if not meeting:
+            return Response({"error": "Meeting not found"}, status=status.HTTP_404_NOT_FOUND)
+
         messages = ChatMessage.objects.filter(
-            meeting__meeting_code=meeting_id
+            meeting=meeting
         ).order_by("created_at")
 
         data = []
@@ -883,6 +887,7 @@ class ChatMessageView(APIView):
             data.append({
                 "id": str(msg.id),
                 "user": msg.user.name,
+                "user_id": str(msg.user.id),
                 "message": msg.message,
                 "created_at": msg.created_at
             })
@@ -893,8 +898,13 @@ class ChatMessageView(APIView):
         user_id = request.data.get("user_id")
         message = request.data.get("message")
 
-        meeting = Meeting.objects.get(meeting_code=meeting_id)
-        user = User.objects.get(id=user_id)
+        meeting = get_meeting_by_identifier(meeting_id)
+        if not meeting:
+            return Response({"error": "Meeting not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        user = get_user_by_identifier(meeting.product, user_id)
+        if not user:
+            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
 
         chat = ChatMessage.objects.create(
             meeting=meeting,

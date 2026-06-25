@@ -81,7 +81,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': url.path[1:],
         'USER': url.username,
-        'PASSWORD':'db2312',
+        'PASSWORD':url.password,
         'HOST': url.hostname,
         'PORT': url.port or 5432,
     }
@@ -158,6 +158,7 @@ CACHES = {
             "socket_timeout": 30,
             "socket_connect_timeout": 30,
             "retry_on_timeout": True,
+            "protocol": 2,
         }
     }
 }
@@ -171,6 +172,7 @@ CHANNEL_LAYERS = {
                 "socket_timeout": 30,
                 "socket_connect_timeout": 30,
                 "retry_on_timeout": True,
+                "protocol": 2,
             }],
         },
     },
