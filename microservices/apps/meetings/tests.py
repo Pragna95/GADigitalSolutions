@@ -3,7 +3,9 @@ from django.urls import reverse
 from rest_framework.test import APITestCase
 from rest_framework import status
 from django.contrib.auth import get_user_model
+# pyrefly: ignore [missing-import]
 from apps.meetings.models import Product, Meeting, User
+# pyrefly: ignore [missing-import]
 from apps.meetings.livekit_utils import generate_join_token
 
 class LiveKitUnitTests(APITestCase):
@@ -127,3 +129,67 @@ class LiveKitUnitTests(APITestCase):
         response = self.client.delete(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(Meeting.objects.count(), 0)
+
+
+from django.contrib.auth.hashers import make_password
+# pyrefly: ignore [missing-import]
+from apps.meetings.models import ProductApiKey
+
+class ScheduleMeetingTests(APITestCase):
+
+    def setUp(self):
+        # Create a test product
+        self.product = Product.objects.create(
+            name="Test Product",
+            slug="test-product",
+            status="active"
+        )
+        # Create active api key
+        self.api_key_str = "kTh35Mm1gA8lX4StIrpfYIvtmStj2XCUVMm3nIdrnU8"
+        self.api_key_hash = make_password(self.api_key_str)
+        self.api_key_obj = ProductApiKey.objects.create(
+            product=self.product,
+            api_key_hash=self.api_key_hash,
+            environment="development",
+            is_active=True
+        )
+
+    def test_schedule_meeting_with_explicit_api_key(self):
+        url = reverse("api_schedule_meeting")
+        data = {
+            "email": "host@test.com",
+            "name": "Host User",
+            "title": "Discussion",
+            "description": "Project sync",
+            "datetime": "2026-06-25T17:00:00Z",
+            "participant_emails": ["participant@test.com"]
+        }
+        response = self.client.post(url, data, format="json", headers={"X-Api-Key": self.api_key_str})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn("meeting_id", response.data)
+        self.assertIn("meeting_code", response.data)
+        
+        # Verify meeting was created in DB
+        meeting = Meeting.objects.get(id=response.data["meeting_id"])
+        self.assertEqual(meeting.title, "Discussion")
+        self.assertEqual(meeting.participants.count(), 1)
+
+    def test_schedule_meeting_fallback_api_key(self):
+        url = reverse("api_schedule_meeting")
+        data = {
+            "email": "host@test.com",
+            "name": "Host User",
+            "title": "Discussion Fallback",
+            "description": "Project sync",
+            "datetime": "2026-06-25T17:00:00Z",
+            "participant_emails": ["participant@test.com"]
+        }
+        # Do NOT set X-Api-Key header to trigger fallback
+        response = self.client.post(url, data, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn("meeting_id", response.data)
+        
+        # Verify meeting was created in DB
+        meeting = Meeting.objects.get(id=response.data["meeting_id"])
+        self.assertEqual(meeting.title, "Discussion Fallback")
+

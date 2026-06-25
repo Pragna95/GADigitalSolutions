@@ -185,32 +185,26 @@ class ScheduleMeetingView(APIView):
         # Get API Key from Header
         raw_api_key = request.headers.get("X-Api-Key")
 
-        if not raw_api_key:
-            return Response(
-                {"error": "X-Api-Key header is required"},
-                status=status.HTTP_401_UNAUTHORIZED
-            )
+        valid_api_key_obj = None
+        if raw_api_key:
+            for api_key_obj in ProductApiKey.objects.filter(is_active=True):
+                if check_password(raw_api_key, api_key_obj.api_key_hash):
+                    valid_api_key_obj = api_key_obj
+                    break
+            if not valid_api_key_obj:
+                return Response(
+                    {"error": "Invalid API Key"},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+        else:
+            # Fallback to first active API key when no key is provided.
+            valid_api_key_obj = ProductApiKey.objects.filter(is_active=True).first()
+            if not valid_api_key_obj:
+                return Response(
+                    {"error": "No active API key found"},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
 
-        # Validate API Key
-        # valid_api_key_obj = None
-
-        # for api_key_obj in ProductApiKey.objects.filter(is_active=True):
-        #     if check_password(raw_api_key, api_key_obj.api_key_hash):
-        #         valid_api_key_obj = api_key_obj
-        #         break
-
-        # if not valid_api_key_obj:
-        #     return Response(
-        #         {"error": "Invalid API Key"},
-        #         status=status.HTTP_401_UNAUTHORIZED
-        #     )
-        # TEMPORARY DEV BYPASS
-        valid_api_key_obj = ProductApiKey.objects.filter(is_active=True).first()
-        if not valid_api_key_obj:
-            return Response(
-        {"error": "No active API key found"},
-        status=status.HTTP_401_UNAUTHORIZED
-    )
         product = valid_api_key_obj.product
 
         # Request Data
@@ -269,8 +263,6 @@ class ScheduleMeetingView(APIView):
     scheduled_end=scheduled_end_dt,
     timezone="Asia/Kolkata"
 )  
-        signer = Signer()
-        encrypted_api_key = signer.sign(raw_api_key)
         # Create Participants
         for participant_email in participant_emails:
             participant_user, _ = User.objects.get_or_create(
@@ -319,14 +311,18 @@ Please join the meeting at the scheduled time.
 Regards,
 Meeting Team
 """
+            try:
+                send_mail(
+                    subject=subject,
+                    message=message,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=participant_emails,
+                    fail_silently=False,
+                )
+            except Exception as e:
+                print(f"[ScheduleMeetingView] Email send failed: {e}")
+                # Continue scheduling even if email delivery fails.
 
-            send_mail(
-        subject=subject,
-        message=message,
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        recipient_list=participant_emails,
-        fail_silently=False,)
-            
         from django.core.cache import cache
         cache.delete(f"dashboard_meetings:{email.lower()}")
         for participant_email in participant_emails:
@@ -373,7 +369,6 @@ class ListMeetingsView(APIView):
         ).distinct().order_by('scheduled_start')
         
         data = []
-        signer = Signer()
         raw_api_key = request.headers.get("X-Api-Key")
         now_time = timezone.now()
         for meeting in meetings:

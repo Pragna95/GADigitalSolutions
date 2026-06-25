@@ -251,6 +251,11 @@ export default function AdvanceSchedule({
             let response;
             let data;
             try {
+                const headers = {};
+                if (apiKey) {
+                    headers["X-Api-Key"] = apiKey;
+                }
+
                 response = await microserviceApi.post("/api/meeting/schedule/", {
                     email: userEmail,
                     name: userName,
@@ -260,9 +265,7 @@ export default function AdvanceSchedule({
                     end_datetime: endDatetime,
                     participant_emails,
                 }, {
-                    headers: {
-                        "X-Api-Key": apiKey,
-                    }
+                    headers,
                 });
                 data = response.data;
             } catch (err) {

@@ -52,6 +52,11 @@ export default function CreateHuddle({ onAddSession, onCancelSession }) {
         }
       }
 
+      const requestHeaders = {};
+      if (apiKey) {
+        requestHeaders["X-Api-Key"] = apiKey;
+      }
+
       const response = await microserviceApi.post("/api/meeting/schedule/", {
         email: userEmail,
         name: userName,
@@ -60,9 +65,7 @@ export default function CreateHuddle({ onAddSession, onCancelSession }) {
         datetime: new Date().toISOString(),
         participant_emails: [],
       }, {
-        headers: {
-          "X-Api-Key": apiKey,
-        }
+        headers: requestHeaders,
       });
 
       if (response.status === 201) {
