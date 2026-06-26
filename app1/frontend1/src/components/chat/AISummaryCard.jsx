@@ -73,7 +73,6 @@ export default function AISummaryCard({ closeCard }) {
 
             p-0
             pr-2
-            -mt-4
           "
         >
           <p className="text-[14px] font-normal leading-relaxed text-[#000000]">
