@@ -138,15 +138,17 @@ const Footer = ({
                     <span className="text-[20px]">🤚</span>
                 </button>
 
-                {/* USER PLUS */}
-                <button
-                    onClick={onAddParticipantsClick}
-                    className="w-11 h-11 rounded-xl flex items-center justify-center text-slate-600 hover:bg-slate-100 hover:scale-110 active:scale-95 transition-all duration-205 cursor-pointer hover:shadow-sm border border-transparent hover:border-slate-100"
-                >
-                    <UserPlus size={18} />
-                </button>
-                {/* HOST MODERATION */}
+                {/* HOST MODERATION — host only gets UserPlus + controls */}
                 {userRole === "host" ? (
+                    <>
+                    {/* USER PLUS — host only */}
+                    <button
+                        onClick={onAddParticipantsClick}
+                        className="w-11 h-11 rounded-xl flex items-center justify-center text-slate-600 hover:bg-slate-100 hover:scale-110 active:scale-95 transition-all duration-205 cursor-pointer hover:shadow-sm border border-transparent hover:border-slate-100"
+                        title="Add Participants"
+                    >
+                        <UserPlus size={18} />
+                    </button>
                     <div className="flex items-center gap-1.5 bg-slate-100/60 hover:bg-slate-100 rounded-2xl px-1.5 py-0.5 border border-slate-200/50 transition-all duration-300">
                         {/* THREE DOTS BUTTON */}
                         <button
@@ -197,8 +199,8 @@ const Footer = ({
                             </button>
                         </div>
                     </div>
+                    </>
                 ) : (
-                    // Regular user view gets the standard non-functional three-dots icon
                     <div className="w-11 h-11 flex items-center justify-center text-slate-300">
                         <MoreVertical size={18} />
                     </div>

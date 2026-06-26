@@ -20,7 +20,6 @@ import Header from "./Header.jsx";
 import Footer from "./Footer.jsx";
 import VideoStage from "./VideoStage.jsx";
 import Sidebar from "./Sidebar.jsx";
-import AddParticipantModal from "./AddParticipantModal.jsx";
 
 const participantMembers = [
     "Rahul",
@@ -48,7 +47,8 @@ const participantMembers = [
 const MeetingRoom = () => {
     const [showHandRaise, setShowHandRaise] = useState(false);
     const [showParticipants, setShowParticipants] = useState(false);
-    const [isAddParticipantOpen, setIsAddParticipantOpen] = useState(false);
+    const [isAddParticipantOpen, setIsAddParticipantOpen] = useState(false); // kept for compat
+    const [showAddParticipant, setShowAddParticipant] = useState(false);
     const [showParticipantsGrid, setShowParticipantsGrid] = useState(false);
     const [showMenuPage, setShowMenuPage] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
@@ -589,6 +589,8 @@ const MeetingRoom = () => {
                     setShowParticipantsGrid={setShowParticipantsGrid}
                     showMenuPage={showMenuPage}
                     setShowMenuPage={setShowMenuPage}
+                    showAddParticipant={showAddParticipant}
+                    setShowAddParticipant={setShowAddParticipant}
                     handRaiseMembers={handRaiseMembers}
                     participantMembers={participantMembers}
                     setShowParticipantsGridDirect={setShowParticipantsGrid}
@@ -610,14 +612,10 @@ const MeetingRoom = () => {
                 setShowMenuPage={setShowMenuPage}
                 setShowParticipants={setShowParticipants}
                 setShowHandRaise={setShowHandRaise}
-                onAddParticipantsClick={() => setIsAddParticipantOpen(true)}
+                onAddParticipantsClick={() => { setShowAddParticipant(true); setShowParticipants(false); setShowHandRaise(false); setShowMenuPage(false); }}
             />
 
-            <AddParticipantModal
-                open={isAddParticipantOpen}
-                setOpen={setIsAddParticipantOpen}
-                meetingId={meetingId}
-            />
+
         </div>
     );
 };

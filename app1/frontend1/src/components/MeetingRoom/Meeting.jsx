@@ -20,12 +20,12 @@ import Footer from "./Footer.jsx";
 import VideoStage from "./VideoStage.jsx";
 import Sidebar from "./Sidebar.jsx";
 import ScreenShareModule from "./ScreenShareModule.jsx";
-import AddParticipantModal from "./AddParticipantModal.jsx";
 
 const Meeting = () => {
     const [showHandRaise, setShowHandRaise] = useState(false);
     const [showParticipants, setShowParticipants] = useState(false);
-    const [isAddParticipantOpen, setIsAddParticipantOpen] = useState(false);
+    const [isAddParticipantOpen, setIsAddParticipantOpen] = useState(false); // kept for compat
+    const [showAddParticipant, setShowAddParticipant] = useState(false);
     const [showParticipantsGrid, setShowParticipantsGrid] = useState(false);
     const [showMenuPage, setShowMenuPage] = useState(false);
     const [activeMenu, setActiveMenu] = useState("assistance");
@@ -996,6 +996,8 @@ const Meeting = () => {
                     setShowParticipantsGrid={setShowParticipantsGrid}
                     showMenuPage={showMenuPage}
                     setShowMenuPage={setShowMenuPage}
+                    showAddParticipant={showAddParticipant}
+                    setShowAddParticipant={setShowAddParticipant}
                     handRaiseMembers={handRaiseMembers}
                     liveParticipants={liveParticipants}
                     setShowParticipantsDirect={setShowParticipantsGrid}
@@ -1033,18 +1035,14 @@ const Meeting = () => {
                 isAnotherUserSharing={isAnotherUserSharing}
                 sharerLabel={sharerLabel}
                 handleShareClick={handleShareClick}
-                onAddParticipantsClick={() => setIsAddParticipantOpen(true)}
+                onAddParticipantsClick={() => { setShowAddParticipant(true); setShowParticipants(false); setShowHandRaise(false); setShowMenuPage(false); }}
                 userRole={userRole}
                 handleKickParticipant={handleKickParticipant}
                 handleEndMeeting={handleEndMeeting}
                 liveParticipants={liveParticipants}
             />
 
-            <AddParticipantModal
-                open={isAddParticipantOpen}
-                setOpen={setIsAddParticipantOpen}
-                meetingId={meetingId}
-            />
+
         </div>
     );
 };

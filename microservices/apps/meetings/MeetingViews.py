@@ -953,15 +953,21 @@ class InviteParticipantView(APIView):
             raw_api_key = getattr(settings, "X_API_KEY", None) or "kTh35Mm1gA8lX4StIrpfYIvtmStj2XCUVMm3nIdrnU8"
 
         product = meeting.product
-        participant_user, created = User.objects.get_or_create(
+        # Use filter().first() instead of get_or_create to handle cases where
+        # duplicate User rows exist for the same (product, email) combination.
+        # get_or_create raises MultipleObjectsReturned when duplicates are present.
+        participant_user = User.objects.filter(
             product=product,
             email=email,
-            defaults={
-                "name": email.split("@")[0].capitalize(),
-                "external_user_id": email,
-                "role": "participant"
-            }
-        )
+        ).first()
+        if participant_user is None:
+            participant_user = User.objects.create(
+                product=product,
+                email=email,
+                name=email.split("@")[0].capitalize(),
+                external_user_id=email,
+                role="participant",
+            )
 
         # 3. Create MeetingParticipant
         MeetingParticipant.objects.get_or_create(
