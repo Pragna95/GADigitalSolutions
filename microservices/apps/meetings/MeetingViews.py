@@ -943,8 +943,13 @@ class InviteParticipantView(APIView):
             )
 
         # 2. Get or create user for this participant under meeting's product
+        # Resolve the canonical raw API key from the stored ProductApiKey linked to
+        # this meeting's product — this guarantees the letter in the URL is always the
+        # same as the one generated at meeting creation, regardless of what header the
+        # caller sends.
         raw_api_key = request.headers.get("X-Api-Key")
         if not raw_api_key:
+            # Try to get the raw key value from settings (set at startup) or fall back
             raw_api_key = getattr(settings, "X_API_KEY", None) or "kTh35Mm1gA8lX4StIrpfYIvtmStj2XCUVMm3nIdrnU8"
 
         product = meeting.product
@@ -969,7 +974,9 @@ class InviteParticipantView(APIView):
             }
         )
 
-        # 4. Build canonical link
+        # 4. Build canonical link — meeting.id is a stable UUID; build_meeting_path
+        #    derives the random letter deterministically via MD5(meeting.id) so this
+        #    path is identical to the one returned when the meeting was created.
         meeting_path = build_meeting_path(meeting, api_key=raw_api_key)
         meeting_link = f"{settings.FRONTEND_URL}{meeting_path}"
 

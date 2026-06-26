@@ -126,12 +126,28 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-
+ALLOWED_HOSTS=['*']
 # CORS configuration
 from corsheaders.defaults import default_headers
 CORS_ALLOW_HEADERS = list(default_headers) + ["x-api-key"]
-CORS_ALLOW_ALL_ORIGINS = True
-CORS_ALLOW_CREDENTIALS = False
+# Allow specific origins (frontend, backend1, microservices) and ngrok URLs if provided
+CORS_ALLOWED_ORIGINS = [
+    os.getenv('NGROK_FRONTEND_URL', ''),
+]
+# Remove empty strings and ensure scheme is present
+CORS_ALLOWED_ORIGINS = [origin for origin in CORS_ALLOWED_ORIGINS if origin]
+CORS_ALLOW_CREDENTIALS = True
+
+if not CORS_ALLOWED_ORIGINS:
+    CORS_ALLOWED_ORIGINS = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+    ]
+
+CSRF_TRUSTED_ORIGINS = [
+    'https://*.ngrok-free.dev',
+    'http://localhost:3000',
+]
 
 # REST Framework settings
 REST_FRAMEWORK = {
@@ -200,8 +216,8 @@ VALID_API_KEYS = os.getenv(
     ''
 ).split(',')
 
-# Frontend configuration
-FRONTEND_URL = os.getenv('FrontendURL', 'http://localhost:3000')
+# Frontend configuration – prefer ngrok URL if set
+FRONTEND_URL = os.getenv('NGROK_FRONTEND_URL', os.getenv('FrontendURL', 'http://localhost:3000'))
 
 # Redirect URL after successful login
 LOGIN_REDIRECT_URL = '/api/super-admin/dashboard/'

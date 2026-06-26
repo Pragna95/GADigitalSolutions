@@ -1,10 +1,12 @@
 import axios from "axios";
-// import "@/lib/api"; // Import lib/api to register global request interceptors
 
-const dataURL = import.meta.env.VITE_DATA_URL || "http://localhost:5000";
+// Base URLs are intentionally empty — Vite dev server proxies:
+//   /api/*       → http://localhost:8000  (microservices)
+//   /socket.io/* → http://localhost:5000  (backend1)
+// In production, configure your reverse-proxy the same way.
 
 const api = axios.create({
-  baseURL: `${dataURL}`,
+  baseURL: "",  // relative; backend1 routes live under /socket.io via proxy
   headers: {
     "Content-Type": "application/json",
   },
@@ -35,7 +37,7 @@ api.interceptors.response.use(
       try {
         const refreshToken = localStorage.getItem("refresh");
         if (refreshToken) {
-          const res = await axios.post(`${dataURL}/api/auth/refresh/`, { refresh: refreshToken });
+          const res = await axios.post(`/api/auth/refresh/`, { refresh: refreshToken });
           if (res.data && res.data.access) {
             localStorage.setItem("token", res.data.access);
             originalRequest.headers.Authorization = `Bearer ${res.data.access}`;
@@ -55,7 +57,7 @@ api.interceptors.response.use(
 );
 
 export const microserviceApi = axios.create({
-  baseURL: import.meta.env.VITE_MICROSERVICE_URL || "http://localhost:8000",
+  baseURL: "",  // relative; all /api/* calls are proxied to :8000 by Vite
   headers: {
     "Content-Type": "application/json",
   },

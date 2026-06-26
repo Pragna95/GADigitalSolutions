@@ -118,12 +118,10 @@ export default function MeetingLobby() {
 
         // ALWAYS enforce microservice authentication for deep links (unless already logged in)
         if (api_key && !isMicroserviceAuth && !isLoggedIn) {
-            const microserviceUrl =
-                import.meta.env.VITE_MICROSERVICE_URL ||
-                "http://localhost:8000";
             const frontendUrl = window.location.origin;
             const targetUrl = `${frontendUrl}/auth-return?redirect=/${company}/${letter || 'a'}/${api_key}/${meeting_id}`;
-            window.location.href = `${microserviceUrl}/api/login/?next=${encodeURIComponent(targetUrl)}`;
+            // /api/login/ is proxied by Vite to localhost:8000 — no hardcoded origin needed
+            window.location.href = `/api/login/?next=${encodeURIComponent(targetUrl)}`;
             return;
         }
 
