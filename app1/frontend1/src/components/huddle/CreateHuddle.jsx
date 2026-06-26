@@ -75,7 +75,7 @@ export default function CreateHuddle({ onAddSession, onCancelSession }) {
         const keyToUse = apiKey || "kTh35Mm1gA8lX4StIrpfYIvtmStj2XCUVMm3nIdrnU8";
         const meetingId = data.meeting_id;
         
-        const path = `/${company}/${letter}/${keyToUse}/${meetingId}`;
+        const path = data.meeting_path || `/${company}/${letter}/${keyToUse}/${meetingId}`;
         const fullLink = `${window.location.origin}${path}`;
 
         setInstantMeetingLink(fullLink);

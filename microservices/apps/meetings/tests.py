@@ -193,3 +193,45 @@ class ScheduleMeetingTests(APITestCase):
         meeting = Meeting.objects.get(id=response.data["meeting_id"])
         self.assertEqual(meeting.title, "Discussion Fallback")
 
+    def test_build_meeting_path_deterministic(self):
+        # Create a meeting
+        meeting = Meeting.objects.create(
+            product=self.product,
+            created_by_user=User.objects.create(
+                product=self.product,
+                external_user_id="host_det",
+                email="host_det@test.com",
+                name="Det Host",
+                role="host"
+            ),
+            title="Det Huddle",
+            meeting_code="det-hudd-lee",
+            status="scheduled",
+            timezone="Asia/Kolkata"
+        )
+        # Import the build_meeting_path function
+        from apps.meetings.MeetingViews import build_meeting_path
+        
+        # Build path multiple times, they should all be identical (including the letter)
+        path1 = build_meeting_path(meeting, api_key=self.api_key_str)
+        path2 = build_meeting_path(meeting, api_key=self.api_key_str)
+        self.assertEqual(path1, path2)
+        
+        # Extract letter from path (format: /product_slug/letter/api_key/meeting_id)
+        letter1 = path1.split("/")[2]
+        
+        # Create another meeting
+        meeting2 = Meeting.objects.create(
+            product=self.product,
+            created_by_user=meeting.created_by_user,
+            title="Det Huddle 2",
+            meeting_code="det-hudd-le2",
+            status="scheduled",
+            timezone="Asia/Kolkata"
+        )
+        path3 = build_meeting_path(meeting2, api_key=self.api_key_str)
+        letter2 = path3.split("/")[2]
+        
+        # Check that it's deterministic for the second meeting too
+        self.assertEqual(build_meeting_path(meeting2, api_key=self.api_key_str), path3)
+

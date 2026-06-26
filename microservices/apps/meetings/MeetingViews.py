@@ -43,7 +43,15 @@ def build_meeting_path(meeting, api_key=None):
     if meeting.product:
         product_slug = meeting.product.slug or meeting.product.name.lower().replace(" ", "-")
     
-    random_letter = random.choice(string.ascii_lowercase)
+    if meeting.id:
+        import hashlib
+        # Use a stable representation of the meeting ID for deterministic hashing.
+        # For UUIDs use the hex representation; otherwise fall back to string.
+        meeting_id_str = meeting.id.hex if hasattr(meeting.id, "hex") else str(meeting.id)
+        hash_val = int(hashlib.md5(meeting_id_str.encode("utf-8")).hexdigest(), 16)
+        random_letter = string.ascii_lowercase[hash_val % len(string.ascii_lowercase)]
+    else:
+        random_letter = random.choice(string.ascii_lowercase)
     
     key_to_use = api_key
     if not key_to_use:
