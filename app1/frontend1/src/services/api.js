@@ -1,14 +1,10 @@
 import axios from "axios";
 
-// Base URLs are intentionally empty — Vite dev server proxies:
-//   /api/*       → http://localhost:8000  (microservices)
-//   /socket.io/* → http://localhost:5000  (backend1)
-// In production, configure your reverse-proxy the same way.
-
 const api = axios.create({
   baseURL: "",  // relative; backend1 routes live under /socket.io via proxy
   headers: {
     "Content-Type": "application/json",
+    "ngrok-skip-browser-warning": "true",
   },
 });
 
@@ -60,6 +56,7 @@ export const microserviceApi = axios.create({
   baseURL: "",  // relative; all /api/* calls are proxied to :8000 by Vite
   headers: {
     "Content-Type": "application/json",
+    "ngrok-skip-browser-warning": "true",
   },
 });
 

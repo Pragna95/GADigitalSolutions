@@ -5,10 +5,12 @@ import { microserviceApi } from "../../services/api.js";
 import { toast } from "react-hot-toast";
 import { Room, RoomEvent, Track } from "livekit-client";
 
-const wsBaseUrl = import.meta.env.VITE_WS_URL || 
-    (import.meta.env.VITE_MICROSERVICE_URL ? 
-        import.meta.env.VITE_MICROSERVICE_URL.replace(/^http/, "ws") : 
-        "ws://localhost:8000");
+// Derive WebSocket base URL from the current browser host so it works everywhere:
+// localhost dev, ngrok tunnels, LAN IPs — no env var needed.
+const wsBaseUrl = (() => {
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${proto}//${window.location.host}`;
+})();
 
 const apiBaseUrl = import.meta.env.VITE_MICROSERVICE_URL || "http://localhost:8000";
 const API_URL = `${apiBaseUrl}/api/meetings`;

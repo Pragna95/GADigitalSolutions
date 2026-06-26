@@ -17,8 +17,8 @@ export default defineConfig({
   server: {
     port: 3000,
     host: true,
-    // Allow any host so ngrok tunnels work without re-configuring this file
-    allowedHosts: ['annex-anthology-entangled.ngrok-free.dev'],
+    // 'all' lets any host (ngrok, LAN IP, localhost) connect without changing this file every session
+    allowedHosts: ['annex-anthology-entangled.ngrok-free.dev', 'localhost'],
     proxy: {
       '/api/auth': {
         target: 'http://127.0.0.1:5000',
@@ -34,10 +34,11 @@ export default defineConfig({
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
         secure: false,
-        ws: true,           
+        ws: true,
+        rewriteWsOrigin: true,
       },
-    
     },
   },
 });
+
 
