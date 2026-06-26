@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+
+// Helper to detect mobile devices
+const isMobileDevice = () => /Android|iPhone|iPad|iPod|WebOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 import axios from "axios";
 import { microserviceApi } from "../../services/api.js";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -840,6 +843,7 @@ const Meeting = () => {
             }
             const room = lkRoomRef.current;
             if (room && room.state === "connected") {
+                // Attempt normal screen share via LiveKit (uses getDisplayMedia under the hood)
                 const trackPub = await room.localParticipant.setScreenShareEnabled(true);
                 const track = trackPub.track;
                 if (track && track.mediaStreamTrack) {
@@ -861,7 +865,13 @@ const Meeting = () => {
                 }
             }
         } catch (err) {
-            console.error("Failed to start screen share:", err);
+            // Mobile browsers often reject getDisplayMedia – provide graceful feedback
+            if (isMobileDevice()) {
+                toast.error("Screen sharing is not supported on this mobile device. You can still view others' shared screens.");
+            } else {
+                console.error("Failed to start screen share:", err);
+                toast.error("Failed to start screen share. Please try again.");
+            }
         }
     };
 

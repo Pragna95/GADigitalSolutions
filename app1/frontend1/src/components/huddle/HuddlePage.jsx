@@ -28,7 +28,7 @@ import { microserviceApi } from "@/services/api";
 
 const TABS = ["Ongoing", "Scheduled", "Completed"];
 
-const sessions = [];
+// const sessions = []; // removed hardcoded sessions list (no longer needed)
 import { useNavigate } from "react-router-dom";
 
 
@@ -238,7 +238,7 @@ const [showSummary, setShowSummary] = useState(false);
         isNewInstant &&
         !m.is_completed &&
         m.created_by_email?.toLowerCase() === userEmail?.toLowerCase();
-      const isScheduledOngoing = m.title !== "Instant Huddle" && m.is_ongoing;
+      const isScheduledOngoing = m.title !== "Instant Huddle" && m.is_ongoing && m.db_status !== "completed";
       return isInstantOngoing || isScheduledOngoing;
     })
     .map(m => ({
@@ -267,10 +267,10 @@ const [showSummary, setShowSummary] = useState(false);
       isDatabase: true
     }));
 
-  const placeholders = sessionsList.filter((s) => s.status === activeTab);
+  // const placeholders = sessionsList.filter((s) => s.status === activeTab); // removed placeholder merging
   const dbItems = activeTab === "Ongoing" ? ongoingDbSessions : (activeTab === "Completed" ? completedDbSessions : []);
 
-  let filteredSessions = [...dbItems, ...placeholders];
+  let filteredSessions = dbItems;
   if (activeTab === "Ongoing") {
     if (ongoingFilter === "Instant") {
       filteredSessions = filteredSessions.filter(s => s.title === "Instant Huddle" || s.title === "Instant Meeting");
